@@ -1,0 +1,38 @@
+# Startdaten für den Import – Format siehe SPEC.md, Abschnitt 9
+# Fehlende Tagesform = normal/keine, fehlender RIR = Standardwert (2)
+
+## 2026-10-18 | Beine | gefuehl=normal | krankheit=keine
+Walking Squat | gewicht | legs | 5x12 ; 10x10 ; 10x10 | notiz=mit Gewichtsscheibe
+Bulgarian Split Squat mit Hüftrotation | gewicht | legs | KGx12 ; 10x8 ; 10x8 ; 10x6 | notiz=mit Scheibe
+Hammer Curls sitzend @ Phoenix | gewicht | arms | 20x15 ; 35x8 ; 35x8 ; 35x7 -> 25x10
+
+## 2026-10-20 | Brust, Rücken | gefuehl=normal | krankheit=keine
+# Klimmzugmaschine: Stufen = Plattenbeschriftung. Annahme: niedrigere Nummer = weniger Assistenz = schwerer
+Klimmzugmaschine @ oben | assistiert | back | S4x8 ; S4x8 ; S3x5 ; S3x4 ; S3x4 ; S3x5
+Hang in Klimmzugschlaufen | zeit | back | 30s ; 25s ; 20s
+Liegestütz | koerpergewicht | chest | KGx20 (schnell) ; KGx10 (langsam) ; KGx12
+Liegestütz an Ringen | stufe | chest | S11x6 ; S11x6 ; S11x6 | notiz=Stufe = Ringhöhe
+Latziehen @ Phoenix | gewicht | back | 20x25 ; 40x6 ; 40x8 ; 40x6
+# Dips: Bandstärke unbekannt (Bänder 4–12 kg)
+Dips mit Band | band | chest | Bx8 ; Bx8 ; Bx4
+Butterfly @ Phoenix | gewicht | chest | 30x12 ; 40x8 ; 40x10
+
+## 2026-10-23 | Schultern | gefuehl=normal | krankheit=keine
+Sit-Ups mit Blackroll | koerpergewicht | core | KGx10 ; KGx10
+# Komplex-Runde 4: 16 kg x 5, dann Drop auf 6 kg x 12/12 – Zuordnung zu den Bewegungen unklar, bitte prüfen
+[KOMPLEX] Kettlebell Schulter-Komplex
++ KB Schulterdrücken | gewicht | shoulders | 8x12/10/10 ; 12x8/8/8 ; 12x8/8/8 ; 16x5 -> 6x12/12
++ KB Halo | gewicht | shoulders
++ KB Overhead Throw | gewicht | shoulders
+[/]
+Front Raise Kabel | gewicht | shoulders | 20x12 ; 40x8 ; 45x7 -> 35x5 -> 25x8
+Face Pulls | gewicht | shoulders | 20x10 ; 40x8
+
+## 2026-10-27 | Beine | gefuehl=normal | krankheit=keine
+Leg Extension @ Phoenix | gewicht | legs | 30x20 ; 40x12 ; 50x10 ; 60x8 ; 60x8
+[SUPERSET]
++ Side Squat | koerpergewicht | hips | KGx12 ; KGx8 ; KGx8
++ Sissy Squat | koerpergewicht | legs | KGx12 ; KGx5 ; KGx5
+[/]
+Back Extension (Fokus Beinbeuger) | koerpergewicht | legs | KGx10 ; KGx10 ; KGx10 ; KGx10
+Cable Crunch unten @ Life Fitness | gewicht | core | 20x12 ; 27x8 ; 27x6 -> 20x6
