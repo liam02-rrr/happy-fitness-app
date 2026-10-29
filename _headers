@@ -1,0 +1,5 @@
+# Cloudflare Pages: Service Worker und Manifest nie zwischenspeichern, damit Updates sofort ankommen
+/sw.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
