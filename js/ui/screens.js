@@ -1,12 +1,13 @@
 import { icons } from './icons.js';
 import { h, icon } from './dom.js';
 import { renderSettings } from './settings.js';
+import { renderExercises } from './exercises.js';
 
 // Die fünf Tabs (SPEC.md, Abschnitt 6.1). Tabs ohne render zeigen einen Platzhalter.
 export const tabs = [
   { id: 'training', label: 'Training', eyebrow: 'Bereit für heute?', hint: 'Hier startest du bald dein Training.', comingIn: 'Kommt in Schritt 1c' },
   { id: 'history', label: 'Verlauf', eyebrow: 'Deine Trainings', hint: 'Hier erscheinen bald alle bisherigen Trainings.', comingIn: 'Kommt in Schritt 1e' },
-  { id: 'exercises', label: 'Übungen', eyebrow: 'Kraft & Mobility', hint: 'Hier legst du bald deine Übungen an.', comingIn: 'Kommt in Schritt 1b' },
+  { id: 'exercises', label: 'Übungen', eyebrow: 'Kraft & Mobility', render: renderExercises },
   { id: 'stats', label: 'Statistik', eyebrow: 'Fortschritt', hint: 'Hier siehst du bald Diagramme und Körperkarte.', comingIn: 'Kommt in Phase 3' },
   { id: 'settings', label: 'Einstellungen', eyebrow: 'App & Daten', render: renderSettings },
 ];

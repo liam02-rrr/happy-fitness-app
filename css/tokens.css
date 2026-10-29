@@ -47,6 +47,12 @@
   --tap-min: 44px;
   --transition: 200ms ease;
 
+  /* Fotos und Überlagerungen */
+  --photo-overlay: linear-gradient(180deg, rgba(10, 15, 28, 0) 30%, rgba(10, 15, 28, 0.92) 100%);
+  --photo-empty: linear-gradient(135deg, #1D3466 0%, #121A2B 70%);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --shadow-float: 0 10px 30px rgba(0, 0, 0, 0.45);
+
   /* Tab-Leiste */
   --tabbar-height: 64px;
   --tabbar-gap: 12px;
