@@ -1,0 +1,140 @@
+/* Komponenten: Kopfzeile, Karten, schwebende Tab-Leiste */
+
+/* Kopfzeile eines Screens */
+.screen-header {
+  margin-bottom: var(--space-5);
+}
+
+.screen-eyebrow {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+
+.screen-title {
+  font-size: var(--text-xxl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Karte */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-5);
+}
+
+.card + .card {
+  margin-top: var(--space-3);
+}
+
+.card-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+.card-text {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* Platzhalter-Karte für noch leere Tabs */
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-5);
+}
+
+.placeholder-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-dim);
+  color: var(--accent-soft);
+}
+
+.placeholder-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.badge {
+  display: inline-block;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* Schwebende Tab-Leiste */
+.tabbar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + var(--tabbar-gap));
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--tabbar-height);
+  max-width: calc(100vw - var(--space-4) * 2);
+  padding: var(--space-2) var(--space-1);
+  background: var(--tabbar-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: var(--tap-min);
+  height: 100%;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.tab svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.tab-label {
+  display: none;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.tab.is-active {
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: 0 var(--space-4) 0 var(--space-3);
+}
+
+.tab.is-active .tab-label {
+  display: inline;
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
