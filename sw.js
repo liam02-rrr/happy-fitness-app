@@ -1,10 +1,11 @@
 // Service Worker: speichert alle App-Dateien im Gerät, damit die App offline startet.
 // Bei jedem Release CACHE_VERSION erhöhen und neue Dateien in APP_FILES eintragen.
-const CACHE_VERSION = 'overload-v1';
+const CACHE_VERSION = 'overload-v2';
 
+// index.html fehlt absichtlich: Cloudflare leitet /index.html auf / um, und eine
+// umgeleitete Antwort darf der Service Worker nicht als Seite ausliefern.
 const APP_FILES = [
   './',
-  './index.html',
   './manifest.webmanifest',
   './css/tokens.css',
   './css/base.css',
@@ -21,10 +22,21 @@ const APP_FILES = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_VERSION)
-      .then((cache) => cache.addAll(APP_FILES.map((url) => new Request(url, { cache: 'reload' }))))
+      .then((cache) => Promise.all(APP_FILES.map(async (url) => {
+        const response = await fetch(new Request(url, { cache: 'reload' }));
+        if (!response.ok) throw new Error(`${url} konnte nicht geladen werden`);
+        await cache.put(url, await withoutRedirect(response));
+      })))
       .then(() => self.skipWaiting())
   );
 });
+
+// Eine umgeleitete Antwort als neue, saubere Antwort speichern (Safari lehnt sie sonst ab)
+async function withoutRedirect(response) {
+  if (!response.redirected) return response;
+  const body = await response.blob();
+  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+}
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
@@ -34,14 +46,14 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Erst im Cache suchen, sonst aus dem Netz laden. Seitenaufrufe liefern immer index.html.
+// Erst im Cache suchen, sonst aus dem Netz laden. Seitenaufrufe liefern immer die Startseite.
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      caches.match('./index.html').then((cached) => cached || fetch(request))
+      caches.match('./').then((cached) => cached || fetch(request))
     );
     return;
   }
