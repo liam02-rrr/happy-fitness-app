@@ -40,7 +40,7 @@ export function renderTraining(section) {
   function activeCard(session) {
     return h('section', { class: 'card card-accent' },
       h('p', { class: 'eyebrow' }, 'Training läuft'),
-      h('p', { class: 'card-title' }, session.muscleGroups.map(groupLabel).join(', ')),
+      h('p', { class: 'card-title' }, (session.muscleGroups ?? []).map(groupLabel).join(', ')),
       h('p', { class: 'card-text' }, `Gestartet am ${formatDate(session.date)}`)
     );
   }
