@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Overload – Tests</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <style>
+    body { margin: 0; padding: var(--space-4); background: var(--bg); color: var(--text); font-family: var(--font); }
+    h1 { font-size: var(--text-xl); margin: 0 0 var(--space-2); }
+    .summary { margin-bottom: var(--space-4); font-weight: 700; }
+    .summary.pass { color: var(--success); }
+    .summary.fail { color: var(--danger); }
+    h2 { font-size: var(--text-sm); color: var(--text-muted); margin: var(--space-4) 0 var(--space-2); }
+    li { font-size: var(--text-sm); margin-bottom: var(--space-1); }
+    .pass::marker { color: var(--success); }
+    .fail { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <h1>Tests</h1>
+  <p class="summary" id="summary">Läuft …</p>
+  <div id="results"></div>
+  <script type="module">
+    // Testdateien: jede exportiert ein Objekt { 'Name': (assert) => { … } }
+    const files = ['./compare.test.js'];
+
+    const assert = {
+      equal(actual, expected) {
+        if (actual !== expected) throw new Error(`erwartet ${JSON.stringify(expected)}, erhalten ${JSON.stringify(actual)}`);
+      },
+      ok(value, message = 'Bedingung nicht erfüllt') {
+        if (!value) throw new Error(message);
+      },
+    };
+
+    let passed = 0;
+    let failed = 0;
+    const results = document.getElementById('results');
+
+    for (const file of files) {
+      const { default: tests } = await import(file);
+      const heading = document.createElement('h2');
+      heading.textContent = file.replace('./', '');
+      const list = document.createElement('ul');
+      results.append(heading, list);
+
+      for (const [name, test] of Object.entries(tests)) {
+        const item = document.createElement('li');
+        try {
+          await test(assert);
+          item.className = 'pass';
+          item.textContent = name;
+          passed++;
+        } catch (error) {
+          item.className = 'fail';
+          item.textContent = `${name}: ${error.message}`;
+          failed++;
+        }
+        list.append(item);
+      }
+    }
+
+    const summary = document.getElementById('summary');
+    summary.textContent = failed ? `${failed} von ${passed + failed} Tests fehlgeschlagen` : `Alle ${passed} Tests grün`;
+    summary.className = `summary ${failed ? 'fail' : 'pass'}`;
+  </script>
+</body>
+</html>
