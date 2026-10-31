@@ -1,15 +1,13 @@
 // Tab „Training“ (SPEC.md, Abschnitt 6.2): Tage seit je Muskelgruppe, Training starten oder fortsetzen.
-// Die Körperkarte „Erholung“ kommt in Phase 3, die Satz-Erfassung in Schritt 1d.
+// Die Körperkarte „Erholung“ kommt in Phase 3.
 import { h, icon } from './dom.js';
 import { icons } from './icons.js';
-import { openView } from './view.js';
-import { confirmSheet } from './sheet.js';
-import { toast } from './toast.js';
 import { daysSince, formatDate } from './format.js';
 import { openTrainingFlow } from './training-flow.js';
+import { openActiveTraining } from './active-training.js';
 import { MUSCLE_GROUPS, groupLabel } from '../models/muscles.js';
-import { listExercises, displayName } from '../models/exercises.js';
-import { getActiveSession, getEntries, deleteSession, lastDoneByExercise } from '../models/sessions.js';
+import { listExercises } from '../models/exercises.js';
+import { getActiveSession, lastDoneByExercise } from '../models/sessions.js';
 
 // Nur für die Anzeige: ab wie vielen Tagen eine Kachel heller wird (frisch = gedimmt, lange her = hell)
 const RECOVERY_LEVELS = [2, 4, 7];
@@ -34,7 +32,9 @@ export function renderTraining(section) {
     content.replaceChildren(...[active && activeCard(active), recoveryCard(lastByGroup)].filter(Boolean));
 
     cta.replaceChildren(icon(icons.play), active ? 'Training fortsetzen' : 'Training starten');
-    cta.onclick = () => (active ? openActive(active, exercises) : openTrainingFlow({ onStarted: refresh }));
+    cta.onclick = () => (active
+      ? openActiveTraining(active, { onChanged: refresh })
+      : openTrainingFlow({ onStarted: (session) => openActiveTraining(session, { onChanged: refresh }) }));
   }
 
   function activeCard(session) {
@@ -43,38 +43,6 @@ export function renderTraining(section) {
       h('p', { class: 'card-title' }, session.muscleGroups.map(groupLabel).join(', ')),
       h('p', { class: 'card-text' }, `Gestartet am ${formatDate(session.date)}`)
     );
-  }
-
-  // Vorläufige Ansicht bis Schritt 1d: Plan anzeigen und Training verwerfen
-  async function openActive(session, exercises) {
-    const byId = new Map(exercises.map((exercise) => [exercise.id, exercise]));
-    const entries = await getEntries(session.id);
-    const close = openView({
-      title: 'Training',
-      content: h('div', { class: 'form' },
-        h('div', { class: 'card' },
-          h('p', { class: 'card-title' }, 'Dein Plan'),
-          h('ol', { class: 'plan-summary' }, entries.map((entry) => {
-            const exercise = byId.get(entry.exerciseId);
-            const group = entry.groupType ? ` · ${entry.groupType === 'superset' ? 'Superset' : 'Komplex'} ${entry.groupPosition}` : '';
-            return h('li', {}, `${exercise ? displayName(exercise) : 'Unbekannte Übung'}${group}`);
-          }))
-        ),
-        h('p', { class: 'hint' }, 'Die Erfassung der Sätze kommt in Schritt 1d.')
-      ),
-      footer: h('button', {
-        type: 'button',
-        class: 'btn btn-danger btn-block',
-        onclick: async () => {
-          const ok = await confirmSheet({ title: 'Training verwerfen?', text: 'Das laufende Training wird gelöscht.', confirmLabel: 'Verwerfen' });
-          if (!ok) return;
-          await deleteSession(session.id);
-          toast('Training verworfen');
-          close();
-          refresh();
-        },
-      }, icon(icons.trash), 'Training verwerfen'),
-    });
   }
 
   function recoveryCard(lastByGroup) {
