@@ -1,6 +1,6 @@
 // Service Worker: speichert alle App-Dateien im Gerät, damit die App offline startet.
 // Bei jedem Release CACHE_VERSION erhöhen und neue Dateien in APP_FILES eintragen.
-const CACHE_VERSION = 'overload-v4';
+const CACHE_VERSION = 'overload-v5';
 
 // index.html fehlt absichtlich: Cloudflare leitet /index.html auf / um, und eine
 // umgeleitete Antwort darf der Service Worker nicht als Seite ausliefern.
@@ -17,6 +17,7 @@ const APP_FILES = [
   './js/models/bodyweight.js',
   './js/models/exercises.js',
   './js/models/muscles.js',
+  './js/models/sessions.js',
   './js/ui/controls.js',
   './js/ui/dom.js',
   './js/ui/exercise-editor.js',
@@ -29,6 +30,8 @@ const APP_FILES = [
   './js/ui/sheet.js',
   './js/ui/tabbar.js',
   './js/ui/toast.js',
+  './js/ui/training.js',
+  './js/ui/training-flow.js',
   './js/ui/view.js',
   './assets/icons/icon-180.png',
   './assets/icons/icon-192.png',

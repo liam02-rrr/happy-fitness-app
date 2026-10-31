@@ -7,21 +7,9 @@ import { daysAgoLabel } from './format.js';
 import { openExerciseEditor } from './exercise-editor.js';
 import { CATEGORIES, listExercises } from '../models/exercises.js';
 import { MUSCLE_GROUPS, groupLabel } from '../models/muscles.js';
-import { getAll } from '../db.js';
+import { lastDoneByExercise } from '../models/sessions.js';
 
 const ALL = 'all';
-
-// Datum der letzten Ausführung je Übung (aus abgeschlossenen Trainings, immer berechnet)
-async function lastDoneByExercise() {
-  const [sessions, entries] = await Promise.all([getAll('sessions'), getAll('entries')]);
-  const sessionDate = new Map(sessions.filter((s) => s.status === 'done').map((s) => [s.id, s.date]));
-  const last = new Map();
-  for (const entry of entries) {
-    const date = sessionDate.get(entry.sessionId);
-    if (date && (!last.has(entry.exerciseId) || date > last.get(entry.exerciseId))) last.set(entry.exerciseId, date);
-  }
-  return last;
-}
 
 export function renderExercises(section) {
   const state = { category: 'strength', group: ALL, query: '', showArchived: false };

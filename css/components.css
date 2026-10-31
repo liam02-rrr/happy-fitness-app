@@ -1091,3 +1091,387 @@ body.has-view .fab {
     transition: none;
   }
 }
+
+/* Haupt-Aktion über der Tab-Leiste (Training starten) */
+.cta {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + var(--tabbar-height) + var(--tabbar-gap) * 2);
+  z-index: 9;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: calc(100% - var(--space-4) * 2);
+  max-width: 448px;
+  min-height: 56px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--text-md);
+  font-weight: 700;
+  box-shadow: var(--shadow-float);
+}
+
+.cta svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cta:active {
+  transform: translateX(-50%) scale(0.98);
+}
+
+body.has-view .cta {
+  display: none;
+}
+
+#screen-training {
+  padding-bottom: calc(56px + var(--space-4));
+}
+
+.card-accent {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, var(--accent-dim) 0%, var(--surface) 80%);
+}
+
+.eyebrow {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-soft);
+  margin-bottom: var(--space-1);
+}
+
+/* Tage seit je Muskelgruppe */
+.recovery-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+}
+
+.recovery-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-3) var(--space-1);
+  border-radius: var(--radius-inner);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.recovery-days {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.recovery-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.recovery-none .recovery-days,
+.recovery-0 .recovery-days {
+  color: var(--text-muted);
+}
+
+.recovery-1 {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+}
+
+.recovery-2 {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.recovery-3 {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+}
+
+.recovery-2 .recovery-days,
+.recovery-2 .recovery-label,
+.recovery-3 .recovery-days,
+.recovery-3 .recovery-label {
+  color: var(--bg);
+}
+
+/* Schritte im Ablauf */
+.steps {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.steps-item {
+  flex: 1;
+  padding-top: var(--space-2);
+  border-top: 3px solid var(--border);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.steps-item.is-done {
+  border-color: var(--accent-dim);
+}
+
+.steps-item.is-active {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* Übungsauswahl */
+.pick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2);
+}
+
+.pick-card {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  height: 128px;
+  padding: var(--space-3);
+  overflow: hidden;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--photo-empty);
+  background-size: cover;
+  background-position: center;
+  text-align: left;
+  transition: border-color var(--transition), transform var(--transition);
+}
+
+.pick-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--photo-overlay);
+}
+
+.pick-card:active {
+  transform: scale(0.97);
+}
+
+.pick-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.pick-card .exercise-card-initial {
+  font-size: 56px;
+  right: var(--space-3);
+  top: 58%;
+}
+
+.pick-name {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.pick-badge {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--text);
+  background: var(--tabbar-bg);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.pick-card.is-selected .pick-badge {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  opacity: 1;
+}
+
+.more-exercises summary {
+  min-height: var(--tap-min);
+  display: flex;
+  align-items: center;
+  color: var(--accent-soft);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.more-exercises summary::-webkit-details-marker {
+  display: none;
+}
+
+.more-exercises .pick-grid {
+  margin-top: var(--space-3);
+}
+
+/* Planung */
+.plan-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.plan-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  touch-action: pan-y;
+}
+
+.plan-block.is-dragging {
+  position: relative;
+  z-index: 2;
+  box-shadow: var(--shadow-float);
+  border-color: var(--accent);
+}
+
+.plan-list.is-sorting .plan-link {
+  visibility: hidden;
+}
+
+.plan-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 64px;
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-1);
+}
+
+.plan-handle,
+.plan-handle-space {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: var(--tap-min);
+  flex-shrink: 0;
+  color: var(--text-muted);
+  touch-action: none;
+  cursor: grab;
+}
+
+.plan-handle svg {
+  width: 20px;
+  height: 20px;
+}
+
+.plan-thumb {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: var(--radius-inner);
+  background: var(--photo-empty);
+  background-size: cover;
+  background-position: center;
+  font-weight: 800;
+  color: var(--accent-soft);
+}
+
+.plan-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.plan-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.plan-meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.plan-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  align-self: center;
+  min-height: 36px;
+  margin: var(--space-1) 0;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.plan-link svg {
+  width: 16px;
+  height: 16px;
+}
+
+.plan-link:active {
+  background: var(--surface-2);
+  color: var(--accent-soft);
+}
+
+/* Gruppe: farbige Klammer links */
+.plan-group {
+  position: relative;
+  padding-left: var(--space-2);
+}
+
+.plan-group::before {
+  content: '';
+  position: absolute;
+  left: var(--space-2);
+  top: 56px;
+  bottom: var(--space-4);
+  width: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+.plan-group-complex::before {
+  background: var(--set-intense);
+}
+
+.plan-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) 0 0;
+}
+
+.plan-group-header .segmented {
+  flex: 1;
+}
+
+.plan-group-header .icon-btn {
+  margin-right: calc(var(--space-2) * -1);
+}
+
+.plan-group-hint {
+  padding: var(--space-1) var(--space-4) 0 var(--space-8);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.plan-group .plan-row {
+  padding-left: var(--space-3);
+}
+
+.plan-summary {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-5);
+  font-size: var(--text-sm);
+  line-height: 1.8;
+}
