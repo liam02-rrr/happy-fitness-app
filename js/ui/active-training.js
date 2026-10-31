@@ -1,25 +1,28 @@
 // Aktives Training (SPEC.md, Abschnitt 6.2): Übungskarten, Sätze loggen, Drop-Ketten, RIR, Notizen,
 // Supersets mit Runden, Komplexe, Pausentimer und Abschluss. Jede Änderung wird sofort gespeichert.
+// mode 'edit': dieselbe Oberfläche zum nachträglichen Bearbeiten oder Nachtragen (SPEC 6.3), ohne Timer.
 import { h, icon } from './dom.js';
 import { icons } from './icons.js';
 import { openView } from './view.js';
 import { confirmSheet } from './sheet.js';
 import { toast } from './toast.js';
+import { segmented, pills } from './controls.js';
 import { photoUrl } from './photo.js';
-import { formatDate } from './format.js';
+import { formatDate, todayISO, plural } from './format.js';
 import { createRestTimer, unlockAudio } from './rest-timer.js';
 import { loadStepper, repsStepper, setSummary, typeBadge, rirPicker, checkButton, usesLevelSteps } from './set-row.js';
-import { groupLabel } from '../models/muscles.js';
-import { listExercises } from '../models/exercises.js';
+import { MUSCLE_GROUPS, groupLabel } from '../models/muscles.js';
+import { listExercises, displayName } from '../models/exercises.js';
 import { getSettings } from '../models/settings.js';
-import { getEntries, saveSession, deleteSession } from '../models/sessions.js';
+import { getEntries, saveSession, deleteSession, addEntry, FEELINGS, ILLNESS } from '../models/sessions.js';
 import { getSets, saveSet, deleteSet, lastExecution, initialSets, orderSets, dropDepth } from '../models/sets.js';
 import { put, newId } from '../db.js';
 import { compareToLast } from '../algorithm/compare.js';
 
 const NOTE_SAVE_DELAY = 400;
 
-export async function openActiveTraining(session, { onChanged } = {}) {
+export async function openActiveTraining(session, { onChanged, mode = 'live' } = {}) {
+  const live = mode === 'live';
   const [exercises, settings, entries] = await Promise.all([listExercises(), getSettings(), getEntries(session.id)]);
   const exerciseById = new Map(exercises.map((exercise) => [exercise.id, exercise]));
   const setsByEntry = new Map();
@@ -34,13 +37,15 @@ export async function openActiveTraining(session, { onChanged } = {}) {
   }
 
   // Sätze laden; beim ersten Öffnen mit den Werten vom letzten Mal vorausfüllen
-  for (const unit of units) {
+  for (const unit of units) await prepareUnit(unit);
+
+  async function prepareUnit(unit) {
     for (const entry of unit.entries) {
-      lastByEntry.set(entry.id, await lastExecution(entry.exerciseId, entry.groupPosition, session.id));
+      lastByEntry.set(entry.id, await lastExecution(entry.exerciseId, entry.groupPosition, session));
       setsByEntry.set(entry.id, await getSets(entry.id));
     }
     const lead = unit.entries[0];
-    if (setsByEntry.get(lead.id).length > 0) continue;
+    if (setsByEntry.get(lead.id).length > 0) return;
 
     const template = initialSets(lead, lastByEntry.get(lead.id), settings);
     const created = [[lead, template]];
@@ -140,12 +145,12 @@ export async function openActiveTraining(session, { onChanged } = {}) {
       const nextRound = unit.entries.map((member) => setsOf(member).find((s) => !s.done && !s.dropFrom)).find(Boolean);
       if (nextRound) {
         focus = { entryId: nextRound.entryId, setId: nextRound.id, unitIndex };
-        timer.start(restFor(set));
+        if (live) timer.start(restFor(set));
         return;
       }
     }
     focus = nextOpenSet(unitIndex);
-    if (!set.dropFrom && focus) timer.start(restFor(set));
+    if (live && !set.dropFrom && focus) timer.start(restFor(set));
   }
 
   function rerender(unitIndex) {
@@ -521,13 +526,24 @@ export async function openActiveTraining(session, { onChanged } = {}) {
     const trendClass = { 1: 'up', 0: 'same', '-1': 'down' };
 
     const noteInput = h('textarea', { class: 'field field-area', rows: 3, placeholder: 'Wie lief das Training?', value: session.note ?? '' });
+    const meta = { date: session.date, muscleGroups: [...(session.muscleGroups ?? [])], feeling: session.feeling, illness: session.illness };
+    const dateInput = h('input', { class: 'field', type: 'date', value: meta.date, max: todayISO(), onchange: () => { meta.date = dateInput.value || meta.date; } });
+    const metaFields = !live && h('div', { class: 'form' },
+      h('label', { class: 'form-field' }, h('span', { class: 'form-label' }, 'Datum'), dateInput),
+      h('div', { class: 'form-field' }, h('span', { class: 'form-label' }, 'Muskelgruppen'),
+        pills(MUSCLE_GROUPS, meta.muscleGroups, (groups) => { meta.muscleGroups = groups; }, { multi: true })),
+      h('div', { class: 'form-field' }, h('span', { class: 'form-label' }, 'Gefühl'),
+        segmented(FEELINGS, meta.feeling, (value) => { meta.feeling = value; })),
+      h('div', { class: 'form-field' }, h('span', { class: 'form-label' }, 'Krankheit'),
+        pills(ILLNESS, meta.illness, (value) => { meta.illness = value; }))
+    );
 
     const save = async () => {
       for (const entry of units.flatMap((unit) => unit.entries)) {
         for (const set of setsOf(entry).filter((s) => !s.done)) await deleteSet(set, []);
       }
-      await saveSession({ ...session, note: noteInput.value.trim(), status: 'done' });
-      timer.stop();
+      await saveSession({ ...session, ...(live ? {} : meta), note: noteInput.value.trim(), status: 'done' });
+      if (live) timer.stop();
       closeFinish();
       closeTraining();
       toast('Training gespeichert', { variant: 'success' });
@@ -535,39 +551,74 @@ export async function openActiveTraining(session, { onChanged } = {}) {
     };
 
     const discard = async () => {
-      const ok = await confirmSheet({ title: 'Training verwerfen?', text: 'Alle Sätze dieses Trainings werden gelöscht.', confirmLabel: 'Verwerfen' });
+      const ok = await confirmSheet({ title: 'Training löschen?', text: 'Das Training mit allen Sätzen wird gelöscht.', confirmLabel: 'Löschen' });
       if (!ok) return;
       await deleteSession(session.id);
-      timer.stop();
+      if (live) timer.stop();
       closeFinish();
       closeTraining();
-      toast('Training verworfen');
+      toast('Training gelöscht');
       onChanged?.();
     };
 
     const closeFinish = openView({
-      title: 'Training beenden',
+      title: live ? 'Training beenden' : 'Training speichern',
       content: h('div', { class: 'form' },
+        metaFields,
         h('div', { class: 'card' },
           h('p', { class: 'eyebrow' }, 'Zusammenfassung'),
-          h('p', { class: 'finish-total num' }, `${rows.length} Übungen · ${totalDone} Sätze`),
+          h('p', { class: 'finish-total num' }, `${plural(rows.length, 'Übung', 'Übungen')} · ${plural(totalDone, 'Satz', 'Sätze')}`),
           h('ul', { class: 'list' }, rows.map((row) =>
             h('li', { class: 'list-row' },
               h('span', { class: 'list-label' }, row.name),
-              h('span', { class: 'list-value meta num' }, `${row.count} Sätze`),
+              h('span', { class: 'list-value meta num' }, plural(row.count, 'Satz', 'Sätze')),
               h('span', { class: `trend trend-${row.trend == null ? 'none' : trendClass[row.trend]}`, title: 'Im Vergleich zum letzten Mal' },
                 row.trend == null ? 'neu' : trendSymbol[row.trend])
             )
           )),
           h('p', { class: 'hint' }, '▲ besser · ● gleich · ▼ schwächer als letztes Mal (bester Arbeitssatz)')
         ),
-        openSets > 0 && h('p', { class: 'status status-warning' }, `${openSets} nicht abgehakte Sätze werden beim Speichern verworfen.`),
+        openSets > 0 && h('p', { class: 'status status-warning' }, `${plural(openSets, 'nicht abgehakter Satz wird', 'nicht abgehakte Sätze werden')} beim Speichern verworfen.`),
         h('label', { class: 'form-field' }, h('span', { class: 'form-label' }, 'Notiz zum Training'), noteInput),
-        h('button', { type: 'button', class: 'btn btn-danger btn-block', onclick: discard }, icon(icons.trash), 'Training verwerfen')
+        h('button', { type: 'button', class: 'btn btn-danger btn-block', onclick: discard }, icon(icons.trash), 'Training löschen')
       ),
       footer: h('button', { type: 'button', class: 'btn btn-primary btn-block', disabled: totalDone === 0, onclick: save },
         totalDone === 0 ? 'Noch kein Satz abgehakt' : 'Training speichern'),
     });
+  }
+
+  // ---- Übung während des Trainings hinzufügen ----
+
+  function openAddExercise() {
+    const used = new Set(units.flatMap((unit) => unit.entries.map((entry) => entry.exerciseId)));
+    const candidates = exercises
+      .filter((exercise) => !exercise.archived && !used.has(exercise.id))
+      .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    const listEl = h('div', { class: 'add-list' });
+    const renderList = (query) => {
+      const matches = candidates.filter((exercise) => displayName(exercise).toLowerCase().includes(query));
+      listEl.replaceChildren(...(matches.length ? matches.map((exercise) =>
+        h('button', { type: 'button', class: 'add-row', onclick: () => add(exercise) },
+          h('span', { class: 'list-label' }, displayName(exercise)),
+          h('span', { class: 'meta' }, groupLabel(exercise.muscleGroup)))
+      ) : [h('p', { class: 'hint' }, 'Keine passende Übung.')]));
+    };
+    const search = h('input', { class: 'field', type: 'search', placeholder: 'Übung suchen', oninput: () => renderList(search.value.trim().toLowerCase()) });
+    renderList('');
+
+    const close = openView({ title: 'Übung hinzufügen', content: h('div', { class: 'form' }, search, listEl) });
+
+    async function add(exercise) {
+      const order = Math.max(0, ...units.flatMap((unit) => unit.entries.map((entry) => entry.order))) + 1;
+      const entry = await addEntry(session.id, exercise.id, order);
+      const unit = { kind: 'single', entries: [entry] };
+      units.push(unit);
+      await prepareUnit(unit);
+      close();
+      focus = nextOpenSet(units.length - 1) ?? focus;
+      renderAll();
+      scrollToFocus();
+    }
   }
 
   // ---- Bildschirm an lassen, solange das Training offen ist ----
@@ -581,23 +632,26 @@ export async function openActiveTraining(session, { onChanged } = {}) {
     }
   };
   const onVisible = () => document.visibilityState === 'visible' && requestWakeLock();
-  requestWakeLock();
-  document.addEventListener('visibilitychange', onVisible);
+  if (live) {
+    requestWakeLock();
+    document.addEventListener('visibilitychange', onVisible);
+  }
 
   focus = nextOpenSet(0);
   renderAll();
 
   const header = h('div', { class: 'active-header' },
-    h('p', { class: 'eyebrow' }, session.muscleGroups.map(groupLabel).join(' · ')),
-    h('p', { class: 'meta' }, `Gestartet am ${formatDate(session.date)} · wird automatisch gespeichert`)
+    h('p', { class: 'eyebrow' }, (session.muscleGroups ?? []).map(groupLabel).join(' · ')),
+    h('p', { class: 'meta' }, `${live ? 'Gestartet am' : 'Training vom'} ${formatDate(session.date)} · wird automatisch gespeichert`)
   );
+  const addButton = h('button', { type: 'button', class: 'btn btn-ghost btn-block', onclick: openAddExercise }, icon(icons.plus), 'Übung hinzufügen');
 
   const closeTraining = openView({
-    title: 'Training',
-    content: h('div', { class: 'active' }, header, list),
+    title: live ? 'Training' : 'Training bearbeiten',
+    content: h('div', { class: 'active' }, header, list, addButton),
     footer: h('div', { class: 'active-footer' },
-      timer.el,
-      h('button', { type: 'button', class: 'btn btn-secondary btn-block', onclick: openFinish }, 'Training beenden')
+      live && timer.el,
+      h('button', { type: 'button', class: `btn ${live ? 'btn-secondary' : 'btn-primary'} btn-block`, onclick: openFinish }, live ? 'Training beenden' : 'Fertig')
     ),
     onClose: () => {
       document.removeEventListener('visibilitychange', onVisible);
