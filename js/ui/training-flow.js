@@ -1,21 +1,22 @@
 // Ablauf „Training starten“ (SPEC.md, Abschnitt 6.2, Schritte 1–5) in einer Vollbild-Ansicht:
 // 1. Muskelgruppen, Zeit, Tagesform · 2. Übungsauswahl · 3. Planung (Reihenfolge, Supersets, Komplexe)
+// backfill: vergessenes Training nachtragen (SPEC 6.3) – mit Datum, ohne laufendes Training zu starten
 import { h, icon } from './dom.js';
 import { icons } from './icons.js';
 import { openView } from './view.js';
 import { toast } from './toast.js';
 import { segmented, pills, formSection } from './controls.js';
 import { photoUrl } from './photo.js';
-import { daysAgoLabel } from './format.js';
+import { daysAgoLabel, todayISO } from './format.js';
 import { MUSCLE_GROUPS, groupLabel } from '../models/muscles.js';
 import { listExercises, displayName } from '../models/exercises.js';
 import { TIME_MODES, FEELINGS, ILLNESS, GROUP_TYPES, startSession, lastDoneByExercise } from '../models/sessions.js';
 
-export async function openTrainingFlow({ onStarted }) {
+export async function openTrainingFlow({ onStarted, backfill = false }) {
   const [exercises, lastDone] = await Promise.all([listExercises(), lastDoneByExercise()]);
   const byId = new Map(exercises.map((exercise) => [exercise.id, exercise]));
 
-  const setup = { muscleGroups: [], timeMode: 'normal', feeling: 'normal', illness: 'none' };
+  const setup = { muscleGroups: [], timeMode: 'normal', feeling: 'normal', illness: 'none', date: todayISO() };
   // Plan als Blöcke: einzelne Übung oder Gruppe (Superset/Komplex)
   let blocks = [];
   let step = 1;
@@ -41,7 +42,12 @@ export async function openTrainingFlow({ onStarted }) {
   function renderSetup() {
     const nextButton = h('button', { type: 'button', class: 'btn btn-primary btn-block', disabled: setup.muscleGroups.length === 0, onclick: () => go(2) }, 'Weiter zur Übungsauswahl');
     footer.replaceChildren(nextButton);
+    const dateInput = backfill && h('input', {
+      class: 'field', type: 'date', value: setup.date, max: todayISO(),
+      onchange: () => { setup.date = dateInput.value || setup.date; },
+    });
     return [
+      backfill && formSection('Datum', dateInput),
       formSection('Muskelgruppen',
         pills(MUSCLE_GROUPS, setup.muscleGroups, (groups) => {
           setup.muscleGroups = groups;
@@ -143,7 +149,9 @@ export async function openTrainingFlow({ onStarted }) {
   function renderPlan() {
     const list = h('div', { class: 'plan-list' });
 
-    const startButton = h('button', { type: 'button', class: 'btn btn-primary btn-block', onclick: start }, icon(icons.play), 'Training starten');
+    const startButton = backfill
+      ? h('button', { type: 'button', class: 'btn btn-primary btn-block', onclick: start }, 'Weiter zum Eintragen')
+      : h('button', { type: 'button', class: 'btn btn-primary btn-block', onclick: start }, icon(icons.play), 'Training starten');
     footer.replaceChildren(startButton);
 
     const exerciseRow = (id, handle) => {
@@ -263,9 +271,9 @@ export async function openTrainingFlow({ onStarted }) {
 
   async function start() {
     try {
-      const session = await startSession(setup, blocks);
+      const session = await startSession(backfill ? { ...setup, status: 'planned' } : { ...setup, date: undefined }, blocks);
       close();
-      toast('Training gestartet', { variant: 'success' });
+      if (!backfill) toast('Training gestartet', { variant: 'success' });
       onStarted?.(session);
     } catch (error) {
       console.error(error);
@@ -279,7 +287,7 @@ export async function openTrainingFlow({ onStarted }) {
   }
 
   const close = openView({
-    title: 'Training starten',
+    title: backfill ? 'Training nachtragen' : 'Training starten',
     content: body,
     footer,
     onBack: () => (step > 1 ? go(step - 1) : close()),

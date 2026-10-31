@@ -49,16 +49,17 @@ export function saveSession(session) {
 }
 
 // Training mit Plan anlegen. blocks = [{ type: 'single'|'superset'|'complex', exerciseIds: [...] }]
-export async function startSession({ muscleGroups, timeMode, feeling, illness }, blocks) {
+// Nachgetragene Trainings bekommen ein eigenes Datum und den Status 'planned', bis sie gespeichert sind.
+export async function startSession({ muscleGroups, timeMode, feeling, illness, date, status = 'active' }, blocks) {
   const session = {
     id: newId(),
-    date: todayISO(),
+    date: date ?? todayISO(),
     muscleGroups,
     timeMode,
     feeling,
     illness,
     note: '',
-    status: 'active',
+    status,
     source: 'app',
   };
 
@@ -89,6 +90,13 @@ export async function startSession({ muscleGroups, timeMode, feeling, illness },
     tx.onerror = () => reject(tx.error);
   });
   return session;
+}
+
+// Einzelne Übung an ein Training anhängen
+export async function addEntry(sessionId, exerciseId, order) {
+  const entry = { id: newId(), sessionId, exerciseId, order, groupPosition: 1, note: '' };
+  await put('entries', entry);
+  return entry;
 }
 
 // Training mit allen Übungen und Sätzen löschen

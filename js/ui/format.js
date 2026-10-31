@@ -52,3 +52,8 @@ export function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return `${formatNumber(Math.max(1, Math.round(bytes / 1024)))} KB`;
   return `${formatNumber(Math.round(bytes / 1024 / 1024 * 10) / 10)} MB`;
 }
+
+// "1 Satz", "3 Sätze"
+export function plural(count, one, many) {
+  return `${count} ${count === 1 ? one : many}`;
+}

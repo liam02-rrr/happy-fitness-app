@@ -62,9 +62,10 @@ p {
   display: block;
 }
 
+/* Nur Deckkraft animieren: ein transform würde schwebende Buttons im Screen kurz verschieben */
 @keyframes screen-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
