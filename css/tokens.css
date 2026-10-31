@@ -15,6 +15,7 @@
   --set-warmup: #5B6478;
   --set-volume: #3D7BFF;
   --set-intense: #FF8A3D;
+  --set-drop: #FFB27D;
 
   --success: #3DDC97;
   --warning: #FFC24D;
@@ -52,6 +53,9 @@
   --photo-empty: linear-gradient(135deg, #1D3466 0%, #121A2B 70%);
   --scrim: rgba(0, 0, 0, 0.55);
   --shadow-float: 0 10px 30px rgba(0, 0, 0, 0.45);
+
+  /* Aktives Training */
+  --drop-indent: 20px;
 
   /* Tab-Leiste */
   --tabbar-height: 64px;
