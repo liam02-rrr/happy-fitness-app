@@ -43,10 +43,13 @@ export async function deleteSet(set, allSets) {
 
 const isPreFatigued = (entry) => (entry.groupPosition ?? 1) >= 2;
 
-// Letzte Ausführung derselben Übung, bevorzugt im gleichen Kontext (allein/erste vs. vorermüdet)
-export async function lastExecution(exerciseId, groupPosition, currentSessionId) {
+// Letzte Ausführung derselben Übung vor diesem Training, bevorzugt im gleichen Kontext
+// (allein/erste vs. vorermüdet). Beim Nachtragen zählen nur Trainings bis zum Datum des Trainings.
+export async function lastExecution(exerciseId, groupPosition, currentSession) {
   const [sessions, entries] = await Promise.all([getAll('sessions'), getAllByIndex('entries', 'exerciseId', exerciseId)]);
-  const done = new Map(sessions.filter((s) => s.status === 'done' && s.id !== currentSessionId).map((s) => [s.id, s]));
+  const done = new Map(sessions
+    .filter((s) => s.status === 'done' && s.id !== currentSession.id && s.date <= currentSession.date)
+    .map((s) => [s.id, s]));
   const candidates = entries
     .filter((entry) => done.has(entry.sessionId))
     .sort((a, b) => done.get(b.sessionId).date.localeCompare(done.get(a.sessionId).date));
