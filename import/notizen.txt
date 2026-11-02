@@ -19,11 +19,11 @@ Butterfly @ Phoenix | gewicht | chest | 30x12 ; 40x8 ; 40x10
 
 ## 2026-10-23 | Schultern | gefuehl=normal | krankheit=keine
 Sit-Ups mit Blackroll | koerpergewicht | core | KGx10 ; KGx10
-# Komplex-Runde 4: 16 kg x 5, dann Drop auf 6 kg x 12/12 – Zuordnung zu den Bewegungen unklar, bitte prüfen
-[KOMPLEX] Kettlebell Schulter-Komplex
-+ KB Schulterdrücken | gewicht | shoulders | 8x12/10/10 ; 12x8/8/8 ; 12x8/8/8 ; 16x5 -> 6x12/12
-+ KB Halo | gewicht | shoulders
-+ KB Overhead Throw | gewicht | shoulders
+# Kettlebell-Block als Superset: Runde 4 Schulterdrücken mit 16 kg (5 pro Seite), Halo und Throw mit 6 kg
+[SUPERSET]
++ KB Schulterdrücken | gewicht | shoulders | 8x12 ; 12x8 ; 12x8 ; 16x5
++ KB Halo | gewicht | shoulders | 8x10 ; 12x8 ; 12x8 ; 6x12
++ KB Overhead Throw | gewicht | shoulders | 8x10 ; 12x8 ; 12x8 ; 6x12
 [/]
 Front Raise Kabel | gewicht | shoulders | 20x12 ; 40x8 ; 45x7 -> 35x5 -> 25x8
 Face Pulls | gewicht | shoulders | 20x10 ; 40x8
