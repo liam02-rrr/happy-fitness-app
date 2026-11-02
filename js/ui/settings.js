@@ -9,6 +9,7 @@ import { getSettings } from '../models/settings.js';
 import { createBackupFile, shareBackupFile, readBackupFile, importBackup } from '../backup.js';
 import { listInternalBackups } from '../db.js';
 import { openThresholds, countChanged, ALL_THRESHOLD_KEYS } from './thresholds.js';
+import { openNotesImport } from './notes-import-view.js';
 
 const BODYWEIGHT_STEP = 0.1;
 const BODYWEIGHT_LIST_LIMIT = 5;
@@ -27,6 +28,7 @@ export function renderSettings(section) {
     content.replaceChildren(
       bodyweightCard(entries, refresh),
       backupCard(settings, refresh),
+      notesCard(refresh),
       safetyCard(persisted, internalBackups),
       thresholdsCard(settings, refresh)
     );
@@ -214,6 +216,16 @@ function showImportSheet(payload, counts, refresh) {
   });
 }
 
+// Notizen im Textformat importieren (SPEC 9)
+function notesCard(refresh) {
+  return h('section', { class: 'card' },
+    cardHeader(icons.notes, 'Notizen importieren'),
+    h('p', { class: 'card-text' }, 'Trainings aus deinen Notizen übernehmen. Vor dem Speichern siehst du eine Vorschau mit allen Fehlern.'),
+    h('button', { type: 'button', class: 'btn btn-secondary btn-block card-action', onclick: () => openNotesImport({ onImported: refresh }) },
+      'Notizen importieren')
+  );
+}
+
 // Dauerhafter Speicher und interne Sicherungen (SPEC 10)
 function safetyCard(persisted, internalBackups) {
   return h('section', { class: 'card' },
@@ -244,7 +256,7 @@ function thresholdsCard(settings, refresh) {
     cardHeader(icons.sliders, 'Schwellenwerte',
       h('span', { class: 'meta' }, changed ? `${changed} geändert` : 'Standard')),
     h('p', { class: 'card-text' }, `Alle ${ALL_THRESHOLD_KEYS.length} Zahlen, mit denen die App Vorschläge rechnet: Satzschema, Progression, Tagesform, Pausen und mehr.`),
-    h('button', { type: 'button', class: 'btn btn-secondary btn-block threshold-open', onclick: () => openThresholds({ onChanged: refresh }) },
+    h('button', { type: 'button', class: 'btn btn-secondary btn-block card-action threshold-open', onclick: () => openThresholds({ onChanged: refresh }) },
       'Schwellenwerte bearbeiten')
   );
 }
