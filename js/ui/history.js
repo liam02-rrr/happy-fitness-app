@@ -4,13 +4,15 @@
 import { h, icon } from './dom.js';
 import { icons } from './icons.js';
 import { openView } from './view.js';
+import { confirmSheet } from './sheet.js';
+import { toast } from './toast.js';
 import { formatDate, plural } from './format.js';
 import { openTrainingFlow } from './training-flow.js';
 import { openActiveTraining } from './active-training.js';
 import { setSummary, typeBadge } from './set-row.js';
 import { groupLabel } from '../models/muscles.js';
 import { listExercises } from '../models/exercises.js';
-import { listSessions, getEntries, FEELINGS, ILLNESS, TIME_MODES } from '../models/sessions.js';
+import { listSessions, getEntries, deleteSession, FEELINGS, ILLNESS, TIME_MODES } from '../models/sessions.js';
 import { getSets, dropDepth } from '../models/sets.js';
 import { getAll } from '../db.js';
 
@@ -177,7 +179,19 @@ export function renderHistory(section) {
           ),
           session.note && h('p', { class: 'ex-last-note' }, session.note)
         ),
-        unitBlocks.length ? unitBlocks : h('p', { class: 'hint' }, 'Dieses Training enthält keine Übungen.')
+        unitBlocks.length ? unitBlocks : h('p', { class: 'hint' }, 'Dieses Training enthält keine Übungen.'),
+        h('button', {
+          type: 'button',
+          class: 'btn btn-danger btn-block',
+          onclick: async () => {
+            const ok = await confirmSheet({ title: 'Training löschen?', text: `Das Training vom ${formatDate(session.date)} wird mit allen Sätzen gelöscht.`, confirmLabel: 'Löschen' });
+            if (!ok) return;
+            await deleteSession(session.id);
+            toast('Training gelöscht');
+            close();
+            refresh();
+          },
+        }, icon(icons.trash), 'Training löschen')
       ),
       footer: h('button', {
         type: 'button',
