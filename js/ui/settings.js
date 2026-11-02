@@ -1,5 +1,4 @@
-// Tab „Einstellungen“: Körpergewicht, Datensicherung, Speicher-Status.
-// Die Schwellenwerte des Algorithmus kommen in Phase 2 dazu.
+// Tab „Einstellungen“: Körpergewicht, Datensicherung, Speicher-Status, Schwellenwerte des Algorithmus.
 import { h, icon } from './dom.js';
 import { icons } from './icons.js';
 import { openSheet, confirmSheet } from './sheet.js';
@@ -9,6 +8,7 @@ import { listBodyweight, addBodyweight, deleteBodyweight } from '../models/bodyw
 import { getSettings } from '../models/settings.js';
 import { createBackupFile, shareBackupFile, readBackupFile, importBackup } from '../backup.js';
 import { listInternalBackups } from '../db.js';
+import { openThresholds, countChanged, ALL_THRESHOLD_KEYS } from './thresholds.js';
 
 const BODYWEIGHT_STEP = 0.1;
 const BODYWEIGHT_LIST_LIMIT = 5;
@@ -28,7 +28,7 @@ export function renderSettings(section) {
       bodyweightCard(entries, refresh),
       backupCard(settings, refresh),
       safetyCard(persisted, internalBackups),
-      thresholdsCard()
+      thresholdsCard(settings, refresh)
     );
   }
 
@@ -238,9 +238,13 @@ function safetyCard(persisted, internalBackups) {
   );
 }
 
-function thresholdsCard() {
+function thresholdsCard(settings, refresh) {
+  const changed = countChanged(settings);
   return h('section', { class: 'card' },
-    cardHeader(icons.sliders, 'Schwellenwerte'),
-    h('p', { class: 'card-text' }, 'Alle Werte für die Vorschläge stellst du hier ab Phase 2 ein.')
+    cardHeader(icons.sliders, 'Schwellenwerte',
+      h('span', { class: 'meta' }, changed ? `${changed} geändert` : 'Standard')),
+    h('p', { class: 'card-text' }, `Alle ${ALL_THRESHOLD_KEYS.length} Zahlen, mit denen die App Vorschläge rechnet: Satzschema, Progression, Tagesform, Pausen und mehr.`),
+    h('button', { type: 'button', class: 'btn btn-secondary btn-block threshold-open', onclick: () => openThresholds({ onChanged: refresh }) },
+      'Schwellenwerte bearbeiten')
   );
 }
