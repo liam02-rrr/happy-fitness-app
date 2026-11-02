@@ -68,7 +68,7 @@ export function renderExercises(section) {
       !url && h('span', { class: 'exercise-card-initial', 'aria-hidden': 'true' }, exercise.name.charAt(0).toUpperCase()),
       h('span', { class: 'exercise-card-text' },
         h('span', { class: 'exercise-card-name' }, exercise.name),
-        h('span', { class: 'exercise-card-meta' }, [exercise.location, groupLabel(exercise.muscleGroup)].filter(Boolean).join(' · '))
+        h('span', { class: 'exercise-card-meta' }, [exercise.useVariants ? `${(exercise.variants?.length ?? 0) + 1} Varianten` : exercise.location, groupLabel(exercise.muscleGroup)].filter(Boolean).join(' · '))
       )
     );
   }
