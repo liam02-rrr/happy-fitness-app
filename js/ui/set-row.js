@@ -17,7 +17,7 @@ function loadUnit(exercise) {
 }
 
 // Zahl mit −/+ und direkter Eingabe
-function numberStepper({ value, step, min = 0, unit, label, decimals = true, onChange }) {
+export function numberStepper({ value, step, min = 0, max = Infinity, unit, label, decimals = true, onChange }) {
   const input = h('input', {
     class: 'set-input num',
     type: 'text',
@@ -30,7 +30,7 @@ function numberStepper({ value, step, min = 0, unit, label, decimals = true, onC
   });
   const change = (direction) => {
     const current = parseDecimal(input.value);
-    const next = current == null ? min : Math.max(min, Math.round((current + direction * step) * 100) / 100);
+    const next = current == null ? min : Math.min(max, Math.max(min, Math.round((current + direction * step) * 100) / 100));
     input.value = formatNumber(next);
     onChange(next);
   };
