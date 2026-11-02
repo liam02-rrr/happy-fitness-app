@@ -111,4 +111,6 @@ export function renderExercises(section) {
 
   section.append(filters, list, archivedToggle, addButton);
   refresh();
+  // Beim Öffnen des Tabs neu laden, z. B. nach einem Import
+  window.addEventListener('hashchange', () => location.hash === '#exercises' && refresh());
 }

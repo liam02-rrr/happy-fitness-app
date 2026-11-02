@@ -23,6 +23,11 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* hidden gilt immer, auch wenn eine Komponente display setzt */
+[hidden] {
+  display: none !important;
+}
+
 button {
   font: inherit;
   color: inherit;
