@@ -43,23 +43,83 @@ export async function deleteSet(set, allSets) {
 
 const isPreFatigued = (entry) => (entry.groupPosition ?? 1) >= 2;
 
-// Letzte Ausführung derselben Übung vor diesem Training, bevorzugt im gleichen Kontext
-// (allein/erste vs. vorermüdet). Beim Nachtragen zählen nur Trainings bis zum Datum des Trainings.
-export async function lastExecution(exerciseId, groupPosition, currentSession) {
+const sameVariant = (entry, variantId) => (entry.variantId ?? null) === (variantId ?? null);
+
+// Frühere Ausführungen derselben Übung (und Variante) vor diesem Training, neueste zuerst.
+// Bevorzugt der gleiche Kontext (allein/erste vs. vorermüdet, SPEC 7.1); gibt es dort nichts,
+// der andere Kontext mit sameContext = false. Beim Nachtragen zählen nur Trainings bis zum Datum.
+export async function executionHistory(exerciseId, groupPosition, currentSession, variantId = null, limit = 6) {
   const [sessions, entries] = await Promise.all([getAll('sessions'), getAllByIndex('entries', 'exerciseId', exerciseId)]);
   const done = new Map(sessions
     .filter((s) => s.status === 'done' && s.id !== currentSession.id && s.date <= currentSession.date)
     .map((s) => [s.id, s]));
   const candidates = entries
-    .filter((entry) => done.has(entry.sessionId))
+    .filter((entry) => done.has(entry.sessionId) && sameVariant(entry, variantId))
     .sort((a, b) => done.get(b.sessionId).date.localeCompare(done.get(a.sessionId).date));
 
   const wanted = (groupPosition ?? 1) >= 2;
-  const entry = candidates.find((candidate) => isPreFatigued(candidate) === wanted) ?? candidates[0];
-  if (!entry) return null;
+  const same = candidates.filter((candidate) => isPreFatigued(candidate) === wanted);
+  const sameContext = same.length > 0;
+  const chosen = (sameContext ? same : candidates).slice(0, limit);
 
-  const sets = (await getSets(entry.id)).filter((set) => set.done);
-  return { entry, sets, session: done.get(entry.sessionId), sameContext: isPreFatigued(entry) === wanted };
+  const executions = [];
+  for (const entry of chosen) {
+    const sets = (await getSets(entry.id)).filter((set) => set.done);
+    if (sets.length) executions.push({ entry, sets, session: done.get(entry.sessionId), sameContext });
+  }
+  return executions;
+}
+
+export async function lastExecution(exerciseId, groupPosition, currentSession, variantId = null) {
+  return (await executionHistory(exerciseId, groupPosition, currentSession, variantId, 1))[0] ?? null;
+}
+
+// Zuletzt genutzte Variante einer Übung (null = Standard)
+export async function lastVariant(exerciseId) {
+  const [sessions, entries] = await Promise.all([getAll('sessions'), getAllByIndex('entries', 'exerciseId', exerciseId)]);
+  const dates = new Map(sessions.filter((s) => s.status === 'done').map((s) => [s.id, s.date]));
+  const latest = entries
+    .filter((entry) => dates.has(entry.sessionId))
+    .sort((a, b) => dates.get(b.sessionId).localeCompare(dates.get(a.sessionId)))[0];
+  return latest?.variantId ?? null;
+}
+
+// Passender Satz vom letzten Mal: k-ter Satz desselben Typs, bei Drops gleiche Tiefe der Kette.
+export function matchingLastSet(set, sets, lastSets) {
+  if (!lastSets?.length) return null;
+  const depth = dropDepth(set, sets);
+  const head = depth === 0 ? set : sets.find((s) => s.id === chainHead(set, sets));
+  const position = sets.filter((s) => !s.dropFrom && s.setType === head.setType).indexOf(head);
+  // Sonst der Satz an derselben Stelle (z. B. letztes Mal ohne Aufwärmsatz)
+  const lastHead = lastSets.filter((s) => !s.dropFrom && s.setType === head.setType)[position]
+    ?? lastSets.filter((s) => !s.dropFrom)[sets.filter((s) => !s.dropFrom).indexOf(head)];
+  if (!lastHead) return null;
+  let match = lastHead;
+  for (let i = 0; i < depth && match; i++) match = lastSets.find((s) => s.dropFrom === match.id);
+  return match ?? null;
+}
+
+function chainHead(set, sets) {
+  let current = set;
+  while (current.dropFrom) current = sets.find((s) => s.id === current.dropFrom) ?? { id: current.dropFrom };
+  return current.id;
+}
+
+// Startsätze aus einem Vorschlag des Algorithmus (Zielwerte vorausgefüllt, RIR offen)
+export function setsFromSuggestion(entry, suggestion) {
+  return suggestion.sets.map((planned, i) => ({
+    id: newId(),
+    entryId: entry.id,
+    index: i + 1,
+    setType: planned.setType,
+    weight: planned.load?.weight ?? undefined,
+    level: planned.load?.level ?? undefined,
+    seconds: planned.load?.seconds ?? undefined,
+    reps: planned.reps ?? undefined,
+    targetRir: planned.rir ?? undefined,
+    rir: null,
+    done: false,
+  }));
 }
 
 // Startsätze für eine Übung im Training: Werte vom letzten Mal, sonst leeres Standardschema (SPEC 7.2)
