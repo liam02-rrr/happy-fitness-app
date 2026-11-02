@@ -84,3 +84,67 @@ export async function deleteExercise(id) {
 export function displayName(exercise) {
   return exercise.location ? `${exercise.name} · ${exercise.location}` : exercise.name;
 }
+
+// ---- Varianten (z. B. verschiedene Kabeltürme oder Griffe einer Übung) ----
+// Die Standard-Variante hat die id null und heißt wie der Ort der Übung. Jede Variante hat
+// ihre eigene Historie, weil Gewichte zwischen Geräten nicht vergleichbar sind (SPEC 1).
+
+export const DEFAULT_VARIANT_NAME = 'Standard';
+
+export function variantsOf(exercise) {
+  if (!exercise?.useVariants) return [];
+  return [{ id: null, name: exercise.location || DEFAULT_VARIANT_NAME }, ...(exercise.variants ?? [])];
+}
+
+export function variantLabel(exercise, variantId) {
+  if (!exercise?.useVariants) return exercise?.location ?? '';
+  return variantsOf(exercise).find((variant) => variant.id === (variantId ?? null))?.name ?? '';
+}
+
+// Übung mit den Werten der gewählten Variante (eigene Gewichtsschritte, Ort)
+export function withVariant(exercise, variantId) {
+  const variant = (exercise.variants ?? []).find((v) => v.id === variantId);
+  if (!variant) return exercise;
+  return {
+    ...exercise,
+    location: variant.name,
+    steps: variant.step && exercise.steps?.step != null ? { ...exercise.steps, step: variant.step } : exercise.steps,
+  };
+}
+
+// Anzeige mit Variante: „Cable Crunch · Life Fitness“
+export function displayNameWithVariant(exercise, variantId) {
+  const label = variantLabel(exercise, variantId);
+  return label ? `${exercise.name} · ${label}` : exercise.name;
+}
+
+export async function addVariant(exercise, name) {
+  const variant = { id: newId(), name: name.trim() };
+  const updated = { ...exercise, useVariants: true, variants: [...(exercise.variants ?? []), variant] };
+  await saveExercise(updated);
+  return { exercise: updated, variant };
+}
+
+// Übung als Variante an eine andere hängen; die ganze Historie wandert mit
+export async function mergeIntoVariant(source, target) {
+  const variants = [...(target.variants ?? [])];
+  const mapping = new Map();
+
+  const add = (name, step) => {
+    const variant = { id: newId(), name: name || source.name };
+    if (step != null && step !== target.steps?.step) variant.step = step;
+    variants.push(variant);
+    return variant.id;
+  };
+  mapping.set(null, add(source.location || source.name, source.steps?.step));
+  for (const variant of source.variants ?? []) mapping.set(variant.id, add(variant.name, variant.step ?? source.steps?.step));
+
+  const entries = await getAllByIndex('entries', 'exerciseId', source.id);
+  for (const entry of entries) {
+    await put('entries', { ...entry, exerciseId: target.id, variantId: mapping.get(entry.variantId ?? null) });
+  }
+  const updated = { ...target, useVariants: true, variants, photo: target.photo ?? source.photo };
+  await saveExercise(updated);
+  await remove('exercises', source.id);
+  return updated;
+}

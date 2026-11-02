@@ -1,10 +1,12 @@
 // Aktives Training (SPEC.md, Abschnitt 6.2): Übungskarten, Sätze loggen, Drop-Ketten, RIR, Notizen,
 // Supersets mit Runden, Komplexe, Pausentimer und Abschluss. Jede Änderung wird sofort gespeichert.
 // mode 'edit': dieselbe Oberfläche zum nachträglichen Bearbeiten oder Nachtragen (SPEC 6.3), ohne Timer.
+// Sätze werden mit dem Vorschlag des Algorithmus vorausgefüllt (SPEC 7); über jedem Satz steht der
+// passende Satz vom letzten Mal. Übungen lassen sich im Training ersetzen, entfernen und bearbeiten.
 import { h, icon } from './dom.js';
 import { icons } from './icons.js';
 import { openView } from './view.js';
-import { confirmSheet } from './sheet.js';
+import { openSheet, confirmSheet } from './sheet.js';
 import { toast } from './toast.js';
 import { segmented, pills } from './controls.js';
 import { photoUrl } from './photo.js';
@@ -12,58 +14,111 @@ import { formatDate, todayISO, plural } from './format.js';
 import { createRestTimer, unlockAudio } from './rest-timer.js';
 import { loadStepper, repsStepper, setSummary, typeBadge, rirPicker, checkButton, usesLevelSteps } from './set-row.js';
 import { MUSCLE_GROUPS, groupLabel } from '../models/muscles.js';
-import { listExercises, displayName } from '../models/exercises.js';
+import { listExercises, displayName, displayNameWithVariant, variantsOf, withVariant, addVariant } from '../models/exercises.js';
+import { openExerciseEditor } from './exercise-editor.js';
+import { suggestionFor, suggestionKey, isFirstOfGroup } from '../models/suggestions.js';
 import { getSettings } from '../models/settings.js';
 import { getEntries, saveSession, deleteSession, addEntry, FEELINGS, ILLNESS } from '../models/sessions.js';
-import { getSets, saveSet, deleteSet, lastExecution, initialSets, orderSets, dropDepth } from '../models/sets.js';
-import { put, newId } from '../db.js';
+import { getSets, saveSet, deleteSet, lastExecution, lastVariant, initialSets, orderSets, dropDepth, matchingLastSet, setsFromSuggestion } from '../models/sets.js';
+import { put, remove, newId } from '../db.js';
 import { compareToLast } from '../algorithm/compare.js';
 
 const NOTE_SAVE_DELAY = 400;
+const DEFAULT_KEY = '__standard';
 
 export async function openActiveTraining(session, { onChanged, mode = 'live' } = {}) {
   const live = mode === 'live';
-  const [exercises, settings, entries] = await Promise.all([listExercises(), getSettings(), getEntries(session.id)]);
-  const exerciseById = new Map(exercises.map((exercise) => [exercise.id, exercise]));
+  const [loadedExercises, settings, loadedEntries] = await Promise.all([listExercises(), getSettings(), getEntries(session.id)]);
+  let exercises = loadedExercises;
+  let exerciseById = new Map(exercises.map((exercise) => [exercise.id, exercise]));
+  const entryList = [...loadedEntries];
   const setsByEntry = new Map();
   const lastByEntry = new Map();
+  let units = [];
+  const setsOf = (entry) => setsByEntry.get(entry.id) ?? [];
 
   // Einheiten: einzelne Übung, Superset oder Komplex (aufeinanderfolgende Einträge mit gleicher groupId)
-  const units = [];
-  for (const entry of entries) {
-    const previous = units.at(-1);
-    if (entry.groupId && previous?.groupId === entry.groupId) previous.entries.push(entry);
-    else units.push({ kind: entry.groupId ? entry.groupType : 'single', groupId: entry.groupId, entries: [entry] });
+  function buildUnits() {
+    entryList.sort((a, b) => a.order - b.order);
+    units = [];
+    for (const entry of entryList) {
+      const previous = units.at(-1);
+      if (entry.groupId && previous?.groupId === entry.groupId) previous.entries.push(entry);
+      else units.push({ kind: entry.groupId ? entry.groupType : 'single', groupId: entry.groupId, entries: [entry] });
+    }
+    // Eine Gruppe mit nur noch einer Übung ist keine Gruppe mehr
+    for (const unit of units) if (unit.entries.length === 1) unit.kind = 'single';
   }
 
-  // Sätze laden; beim ersten Öffnen mit den Werten vom letzten Mal vorausfüllen
-  for (const unit of units) await prepareUnit(unit);
+  // Effektive Übung eines Eintrags (mit Werten der gewählten Variante)
+  const exerciseOf = (entry) => {
+    const exercise = exerciseById.get(entry.exerciseId);
+    return exercise ? withVariant(exercise, entry.variantId ?? null) : { name: 'Gelöschte Übung', type: 'weight', steps: null };
+  };
 
+  // Sätze laden; beim ersten Öffnen mit dem Vorschlag (oder den Werten vom letzten Mal) vorausfüllen.
+  // Hat sich seitdem etwas geändert (Schwellenwerte, Variante, Reihenfolge) und ist noch kein Satz
+  // abgehakt, wird der Vorschlag neu berechnet.
   async function prepareUnit(unit) {
     for (const entry of unit.entries) {
-      lastByEntry.set(entry.id, await lastExecution(entry.exerciseId, entry.groupPosition, session));
+      const exercise = exerciseById.get(entry.exerciseId);
+      if (exercise?.useVariants && !entry.variantChosen) {
+        entry.variantId = await lastVariant(exercise.id);
+        entry.variantChosen = true;
+        await put('entries', entry);
+      }
+      lastByEntry.set(entry.id, await lastExecution(entry.exerciseId, entry.groupPosition, session, entry.variantId ?? null));
       setsByEntry.set(entry.id, await getSets(entry.id));
     }
-    const lead = unit.entries[0];
-    if (setsByEntry.get(lead.id).length > 0) return;
 
-    const template = initialSets(lead, lastByEntry.get(lead.id), settings);
-    const created = [[lead, template]];
-    // Komplex: alle Bewegungen bekommen die gleiche Satzstruktur, Wiederholungen je Bewegung vom letzten Mal
-    for (const member of unit.entries.slice(1)) {
-      if (unit.kind === 'complex') {
-        const own = lastByEntry.get(member.id)?.sets ?? [];
-        created.push([member, mirrorSets(template, member, (set, depth) =>
-          own.find((o) => o.index === set.index && dropDepth(o, own) === depth)?.reps ?? null)]);
-      } else {
-        created.push([member, initialSets(member, lastByEntry.get(member.id), settings)]);
-      }
+    if (unit.kind !== 'complex') {
+      for (const entry of unit.entries) await prepareEntry(entry);
+      return;
     }
-    for (const [entry, sets] of created) {
-      for (const set of sets) await saveSet(set);
-      setsByEntry.set(entry.id, orderSets(sets));
+    // Komplex: Hauptbewegung bestimmt die Sätze, die anderen Bewegungen laufen parallel mit
+    const [lead, ...members] = unit.entries;
+    const regenerated = await prepareEntry(lead);
+    for (const member of members) {
+      const own = setsOf(member);
+      if (own.length && !regenerated) continue;
+      if (own.some((set) => set.done)) continue;
+      for (const set of own) await deleteSet(set, []);
+      const ownLast = lastByEntry.get(member.id)?.sets ?? [];
+      const mirrored = mirrorSets(setsOf(lead), member, (set) => matchingLastSet(set, setsOf(lead), ownLast)?.reps ?? null);
+      for (const set of mirrored) await saveSet(set);
+      setsByEntry.set(member.id, orderSets(mirrored));
     }
   }
+
+  async function prepareEntry(entry) {
+    const exercise = exerciseById.get(entry.exerciseId);
+    if (!exercise) return false;
+    const isFirstInGroup = isFirstOfGroup(entry, entryList, exerciseById);
+    const key = suggestionKey({ settings, exercise, entry, session, isFirstInGroup });
+    const sets = setsOf(entry);
+    const regenerate = sets.length === 0 || (!sets.some((set) => set.done) && entry.planKey !== key);
+    if (!regenerate) return false;
+
+    for (const set of sets) await deleteSet(set, []);
+    const suggestion = await suggestionFor({ exercise, entry, session, settings, isFirstInGroup });
+    const created = suggestion
+      ? setsFromSuggestion(entry, suggestion)
+      : initialSets(entry, lastByEntry.get(entry.id), settings);
+    entry.suggestion = suggestion
+      ? { reason: suggestion.reason, uncertain: suggestion.uncertain, targetSeconds: suggestion.targetSeconds, createdAt: new Date().toISOString() }
+      : undefined;
+    entry.planKey = key;
+    await put('entries', entry);
+    for (const set of created) await saveSet(set);
+    setsByEntry.set(entry.id, orderSets(created));
+    return true;
+  }
+
+  async function prepareAll() {
+    buildUnits();
+    for (const unit of units) await prepareUnit(unit);
+  }
+  await prepareAll();
 
   // Kopie einer Satzstruktur für eine andere Bewegung im Komplex
   function mirrorSets(template, entry, repsFor) {
@@ -84,10 +139,30 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
   const list = h('div', { class: 'active-list' });
   const unitEls = new Map();
 
-  // ---- Hilfsfunktionen für Sätze ----
+  // ---- Hilfsfunktionen ----
 
-  const setsOf = (entry) => setsByEntry.get(entry.id);
+  const unitIndexOf = (entry) => units.findIndex((unit) => unit.entries.includes(entry));
+
+  // Reihenfolge lückenlos 1..n und Gruppenpositionen neu nummerieren
+  async function normalizeEntries() {
+    entryList.sort((a, b) => a.order - b.order);
+    const groups = new Map();
+    for (const [i, entry] of entryList.entries()) {
+      entry.order = i + 1;
+      if (entry.groupId) groups.set(entry.groupId, [...(groups.get(entry.groupId) ?? []), entry]);
+    }
+    for (const members of groups.values()) {
+      if (members.length === 1) {
+        Object.assign(members[0], { groupId: undefined, groupType: undefined, groupPosition: 1 });
+      } else {
+        members.forEach((member, i) => { member.groupPosition = i + 1; });
+      }
+    }
+    for (const entry of entryList) await put('entries', entry);
+  }
+
   const mainIndexLabel = (set, sets) => sets.filter((s) => !s.dropFrom).indexOf(set) + 1;
+  const lastSetFor = (entry, set) => matchingLastSet(set, setsOf(entry), lastByEntry.get(entry.id)?.sets);
 
   // Passender Satz einer anderen Bewegung im Komplex (gleiche Runde, gleiche Drop-Tiefe)
   function partnerSet(leadSet, leadSets, entry) {
@@ -154,8 +229,10 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
   }
 
   function rerender(unitIndex) {
+    const old = unitEls.get(unitIndex);
+    if (!old) return renderAll();
     const el = renderUnit(units[unitIndex], unitIndex);
-    unitEls.get(unitIndex).replaceWith(el);
+    old.replaceWith(el);
     unitEls.set(unitIndex, el);
   }
 
@@ -194,18 +271,37 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
     );
   }
 
-  function exerciseHeader(entry, exercise, extra) {
+  function exerciseHeader(entry, exercise, extra, { showVariants = true } = {}) {
     const url = photoUrl(exercise.photo);
     const last = lastByEntry.get(entry.id);
+    const base = exerciseById.get(entry.exerciseId);
+    const suggestion = entry.suggestion;
     return h('div', { class: 'ex-header' },
       h('span', { class: 'ex-thumb', style: url ? `background-image: url("${url}")` : null }, url ? null : exercise.name.charAt(0).toUpperCase()),
       h('div', { class: 'ex-title' },
-        h('p', { class: 'ex-name' }, exercise.name),
-        h('p', { class: 'ex-meta' }, [exercise.location, groupLabel(exercise.muscleGroup), exercise.unilateral ? 'einseitig' : null].filter(Boolean).join(' · ')),
+        h('div', { class: 'ex-name-row' },
+          h('p', { class: 'ex-name' }, exercise.name),
+          base && h('button', { type: 'button', class: 'ex-menu', 'aria-label': `Optionen für ${exercise.name}`, onclick: () => openEntryMenu(entry) }, icon(icons.more))
+        ),
+        h('p', { class: 'ex-meta' }, [base?.useVariants ? null : exercise.location, groupLabel(exercise.muscleGroup), exercise.unilateral ? 'einseitig' : null].filter(Boolean).join(' · ')),
+        showVariants && base?.useVariants && variantPicker(entry, base),
         exercise.setupNotes && h('p', { class: 'ex-setup' }, icon(icons.settings), exercise.setupNotes),
+        suggestion && h('p', { class: 'ex-suggestion' },
+          h('span', { class: 'ex-suggestion-label' }, 'Vorschlag'),
+          suggestion.reason,
+          suggestion.uncertain && h('span', { class: 'mini-chip mini-chip-warning' }, 'unsicher')),
         extra,
         last?.entry.note && h('p', { class: 'ex-last-note' }, `Notiz vom letzten Mal: ${last.entry.note}`)
       )
+    );
+  }
+
+  // Varianten als Pillen; die zuletzt genutzte ist vorausgewählt, „+ Neu“ legt direkt eine an
+  function variantPicker(entry, exercise) {
+    const options = variantsOf(exercise).map((variant) => ({ id: variant.id ?? DEFAULT_KEY, label: variant.name }));
+    return h('div', { class: 'variant-picker' },
+      pills(options, entry.variantId ?? DEFAULT_KEY, (id) => chooseVariant(entry, id === DEFAULT_KEY ? null : id), { scroll: true }),
+      h('button', { type: 'button', class: 'pill pill-add', onclick: () => newVariant(entry, exercise) }, '+ Neu')
     );
   }
 
@@ -240,7 +336,7 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
   // Satz-Zeilen einer Übung (bei Komplex: Hauptbewegung, Partner werden mitgeführt)
   function setRows(unit, unitIndex) {
     const lead = unit.entries[0];
-    const exercise = exerciseById.get(lead.exerciseId);
+    const exercise = exerciseOf(lead);
     const sets = setsOf(lead);
     const isComplex = unit.kind === 'complex';
     const members = isComplex ? unit.entries : [lead];
@@ -293,6 +389,10 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
       }
 
       const title = set.dropFrom ? 'Drop' : `Satz ${mainIndexLabel(set, sets)}`;
+      const lastSet = lastSetFor(lead, set);
+      const lastReps = isComplex && lastSet
+        ? members.map((member) => matchingLastSet(member === lead ? set : partnerSet(set, sets, member) ?? set, setsOf(member), lastByEntry.get(member.id)?.sets)?.reps ?? '–').join('/')
+        : lastSet?.reps;
       const loadInput = loadStepper(set, exercise, settings, (changes) => applyAll(set, changes));
 
       let repsInputs;
@@ -341,6 +441,7 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
         h('div', { class: 'set-head' },
           typeBadge(set, (setType) => applyAll(set, { setType }).then(() => rerender(unitIndex))),
           h('span', { class: 'set-title' }, title),
+          set.targetRir != null && !set.done && h('span', { class: 'set-target' }, `Ziel RIR ${set.targetRir}`),
           !isFocus && h('button', {
             type: 'button',
             class: 'set-collapse',
@@ -351,6 +452,9 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
           }, 'Zuklappen'),
           h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Satz löschen', onclick: () => removeSet(unit, unitIndex, set) }, icon(icons.trash))
         ),
+        h('p', { class: 'set-last' }, lastSet
+          ? ['Letztes Mal: ', h('span', { class: 'num' }, setSummary(lastSet, exercise, lastReps)), lastSet.rir != null ? ` · RIR ${lastSet.rir}` : '']
+          : 'Letztes Mal: –'),
         h('div', { class: `set-inputs${repsInputs && !isComplex ? ' is-pair' : ''}` }, loadInput, repsInputs),
         h('div', { class: 'set-foot' },
           rirPicker(set.rir, (rir) => applyAll(set, { rir })),
@@ -390,7 +494,7 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
   async function addDrop(unit, unitIndex, fromSet) {
     timer.stop();
     const lead = unit.entries[0];
-    const exercise = exerciseById.get(lead.exerciseId);
+    const exercise = exerciseOf(lead);
     const leadSets = setsOf(lead);
     const members = unit.kind === 'complex' ? unit.entries : [lead];
     let leadDrop;
@@ -446,7 +550,7 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
   }
 
   function exerciseCard(unit, unitIndex, entry) {
-    const exercise = exerciseById.get(entry.exerciseId);
+    const exercise = exerciseOf(entry);
     const note = noteField([entry]);
     const subUnit = { kind: 'single', entries: [entry] };
     return h('article', { class: 'ex-card', dataset: { entryId: entry.id } },
@@ -465,12 +569,12 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
 
     if (unit.kind === 'complex') {
       const lead = unit.entries[0];
-      const exercise = exerciseById.get(lead.exerciseId);
+      const exercise = exerciseOf(lead);
       const note = noteField([lead]);
       const names = unit.entries.map((entry) => exerciseById.get(entry.exerciseId)?.name ?? '?');
       return h('article', { class: 'ex-card ex-complex', dataset: { entryId: lead.id } },
         h('p', { class: 'eyebrow eyebrow-complex' }, 'Komplex · ein Gewicht, ohne Pause'),
-        exerciseHeader(lead, { ...exercise, name: names.join(' + ') }, lastLine(lead, exercise, lastByEntry.get(lead.id), unit.entries)),
+        exerciseHeader(lead, { ...exercise, name: names.join(' + ') }, lastLine(lead, exercise, lastByEntry.get(lead.id), unit.entries), { showVariants: false }),
         h('div', { class: 'set-list' }, setRows(unit, unitIndex)),
         h('div', { class: 'ex-actions' },
           h('button', { type: 'button', class: 'ex-action', onclick: () => addSet(unit, unitIndex) }, icon(icons.plus), 'Runde'),
@@ -503,7 +607,7 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
   function openFinish() {
     const summary = units.map((unit) => {
       const lead = unit.entries[0];
-      const exercise = exerciseById.get(lead.exerciseId);
+      const exercise = { ...exerciseOf(lead), name: nameOf(lead) };
       const done = setsOf(lead).filter((set) => set.done);
       const trend = compareToLast(setsOf(lead), lastByEntry.get(lead.id)?.sets, exercise);
       const names = unit.kind === 'complex' ? unit.entries.map((e) => exerciseById.get(e.exerciseId)?.name).join(' + ') : null;
@@ -512,9 +616,9 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
     const rows = summary.flatMap(({ unit, exercise, names, done, trend }) => {
       if (unit.kind === 'superset') {
         return unit.entries.map((entry) => {
-          const ex = exerciseById.get(entry.exerciseId);
+          const ex = exerciseOf(entry);
           const sets = setsOf(entry);
-          return { name: ex.name, count: sets.filter((s) => s.done).length, trend: compareToLast(sets, lastByEntry.get(entry.id)?.sets, ex) };
+          return { name: nameOf(entry), count: sets.filter((s) => s.done).length, trend: compareToLast(sets, lastByEntry.get(entry.id)?.sets, ex) };
         });
       }
       return [{ name: names ?? exercise.name, count: done.length, trend }];
@@ -587,38 +691,182 @@ export async function openActiveTraining(session, { onChanged, mode = 'live' } =
     });
   }
 
-  // ---- Übung während des Trainings hinzufügen ----
+  // ---- Übungen im Training: hinzufügen, ersetzen, entfernen, bearbeiten ----
 
-  function openAddExercise() {
-    const used = new Set(units.flatMap((unit) => unit.entries.map((entry) => entry.exerciseId)));
+  const nameOf = (entry) => {
+    const exercise = exerciseById.get(entry.exerciseId);
+    return exercise ? displayNameWithVariant(exercise, entry.variantId ?? null) : 'Gelöschte Übung';
+  };
+
+  // Liste aller Übungen mit Suche; wählt eine aus
+  function openExercisePicker({ title, exclude = new Set(), onPick }) {
     const candidates = exercises
-      .filter((exercise) => !exercise.archived && !used.has(exercise.id))
+      .filter((exercise) => !exercise.archived && !exclude.has(exercise.id))
       .sort((a, b) => a.name.localeCompare(b.name, 'de'));
     const listEl = h('div', { class: 'add-list' });
     const renderList = (query) => {
       const matches = candidates.filter((exercise) => displayName(exercise).toLowerCase().includes(query));
       listEl.replaceChildren(...(matches.length ? matches.map((exercise) =>
-        h('button', { type: 'button', class: 'add-row', onclick: () => add(exercise) },
+        h('button', { type: 'button', class: 'add-row', onclick: async () => { await onPick(exercise); close(); } },
           h('span', { class: 'list-label' }, displayName(exercise)),
           h('span', { class: 'meta' }, groupLabel(exercise.muscleGroup)))
       ) : [h('p', { class: 'hint' }, 'Keine passende Übung.')]));
     };
     const search = h('input', { class: 'field', type: 'search', placeholder: 'Übung suchen', oninput: () => renderList(search.value.trim().toLowerCase()) });
     renderList('');
+    const close = openView({ title, content: h('div', { class: 'form' }, search, listEl) });
+  }
 
-    const close = openView({ title: 'Übung hinzufügen', content: h('div', { class: 'form' }, search, listEl) });
+  function openAddExercise() {
+    openExercisePicker({
+      title: 'Übung hinzufügen',
+      exclude: new Set(entryList.map((entry) => entry.exerciseId)),
+      onPick: async (exercise) => {
+        const order = Math.max(0, ...entryList.map((entry) => entry.order)) + 1;
+        entryList.push(await addEntry(session.id, exercise.id, order));
+        await prepareAll();
+        focus = nextOpenSet(units.length - 1) ?? focus;
+        renderAll();
+        scrollToFocus();
+      },
+    });
+  }
 
-    async function add(exercise) {
-      const order = Math.max(0, ...units.flatMap((unit) => unit.entries.map((entry) => entry.order))) + 1;
-      const entry = await addEntry(session.id, exercise.id, order);
-      const unit = { kind: 'single', entries: [entry] };
-      units.push(unit);
-      await prepareUnit(unit);
-      close();
-      focus = nextOpenSet(units.length - 1) ?? focus;
-      renderAll();
-      scrollToFocus();
+  function openEntryMenu(entry) {
+    const unit = units[unitIndexOf(entry)];
+    openSheet({
+      title: nameOf(entry),
+      actions: [
+        { label: 'Ersetzen', onClick: () => { setTimeout(() => startReplace(entry, unit), 0); } },
+        { label: 'Übung bearbeiten', onClick: () => { setTimeout(() => editExercise(entry), 0); } },
+        { label: 'Aus dem Training entfernen', variant: 'danger', onClick: () => { setTimeout(() => removeEntry(entry), 0); } },
+      ],
+    });
+  }
+
+  // Ersetzen, z. B. wenn ein Gerät besetzt ist. Abgehakte Sätze bleiben bei der alten Übung.
+  function startReplace(entry, unit) {
+    const anyDone = setsOf(entry).some((set) => set.done);
+    if (unit?.kind === 'complex' && unit.entries.some((member) => setsOf(member).some((set) => set.done))) {
+      toast('Im Komplex sind schon Runden erledigt. Entferne die Bewegung stattdessen.', { variant: 'danger', duration: 3500 });
+      return;
     }
+    openExercisePicker({
+      title: 'Übung ersetzen',
+      exclude: new Set([entry.exerciseId]),
+      onPick: async (exercise) => {
+        const fresh = { variantId: null, variantChosen: false, suggestion: undefined, planKey: undefined };
+        if (!anyDone) {
+          for (const set of setsOf(entry)) await deleteSet(set, []);
+          Object.assign(entry, { exerciseId: exercise.id, note: '', ...fresh });
+          setsByEntry.set(entry.id, []);
+          await put('entries', entry);
+          // Im Komplex laufen die anderen Bewegungen parallel: alle neu aufbauen
+          if (unit?.kind === 'complex') {
+            for (const member of unit.entries) {
+              for (const set of setsOf(member)) await deleteSet(set, []);
+              setsByEntry.set(member.id, []);
+            }
+          }
+        } else {
+          for (const set of setsOf(entry).filter((s) => !s.done)) await deleteSet(set, []);
+          const replacement = {
+            id: newId(), sessionId: session.id, exerciseId: exercise.id, order: entry.order + 0.5,
+            groupId: entry.groupId, groupType: entry.groupType, groupPosition: entry.groupPosition, note: '', ...fresh,
+          };
+          // Die alte Übung (mit ihren erledigten Sätzen) steht danach allein vor der Gruppe
+          if (entry.groupId) {
+            const firstOrder = Math.min(...entryList.filter((e) => e.groupId === entry.groupId).map((e) => e.order));
+            Object.assign(entry, { order: firstOrder - 0.5, groupId: undefined, groupType: undefined, groupPosition: 1 });
+          }
+          entryList.push(replacement);
+        }
+        await normalizeEntries();
+        await prepareAll();
+        focus = nextOpenSet(0);
+        renderAll();
+        scrollToFocus();
+        toast(`Ersetzt durch ${exercise.name}`, { variant: 'success' });
+      },
+    });
+  }
+
+  async function removeEntry(entry) {
+    const done = setsOf(entry).filter((set) => set.done).length;
+    if (done) {
+      const ok = await confirmSheet({
+        title: 'Übung entfernen?',
+        text: `${nameOf(entry)} hat ${plural(done, 'abgehakten Satz', 'abgehakte Sätze')}. Sie werden gelöscht.`,
+        confirmLabel: 'Entfernen',
+      });
+      if (!ok) return;
+    }
+    for (const set of setsOf(entry)) await deleteSet(set, []);
+    await remove('entries', entry.id);
+    entryList.splice(entryList.indexOf(entry), 1);
+    setsByEntry.delete(entry.id);
+    await normalizeEntries();
+    await prepareAll();
+    focus = nextOpenSet(0);
+    renderAll();
+    toast('Übung entfernt');
+  }
+
+  function editExercise(entry) {
+    const exercise = exerciseById.get(entry.exerciseId);
+    if (!exercise) return;
+    openExerciseEditor(exercise, {
+      onSaved: async () => {
+        exercises = await listExercises();
+        exerciseById = new Map(exercises.map((e) => [e.id, e]));
+        await prepareAll();
+        renderAll();
+      },
+    });
+  }
+
+  // Variante wechseln: nur solange noch kein Satz abgehakt ist (eigene Historie je Variante)
+  async function chooseVariant(entry, variantId) {
+    if ((entry.variantId ?? null) === variantId) return;
+    if (setsOf(entry).some((set) => set.done)) {
+      toast('Die Variante lässt sich nur vor dem ersten abgehakten Satz wechseln.', { variant: 'danger', duration: 3500 });
+      rerender(unitIndexOf(entry));
+      return;
+    }
+    for (const set of setsOf(entry)) await deleteSet(set, []);
+    setsByEntry.set(entry.id, []);
+    Object.assign(entry, { variantId, variantChosen: true, planKey: undefined });
+    await put('entries', entry);
+    const index = unitIndexOf(entry);
+    await prepareUnit(units[index]);
+    focus = nextOpenSet(index) ?? focus;
+    rerender(index);
+  }
+
+  function newVariant(entry, exercise) {
+    const input = h('input', { class: 'field', type: 'text', placeholder: 'z. B. Kabelturm hinten links', autocapitalize: 'sentences' });
+    openSheet({
+      title: 'Neue Variante',
+      text: `Für ${exercise.name}. Die Variante bekommt ihre eigene Historie.`,
+      content: input,
+      actions: [{
+        label: 'Anlegen',
+        variant: 'primary',
+        onClick: async () => {
+          const name = input.value.trim();
+          if (!name) {
+            toast('Bitte einen Namen eingeben.', { variant: 'danger' });
+            return false;
+          }
+          const { exercise: updated, variant } = await addVariant(exerciseById.get(exercise.id), name);
+          exerciseById.set(updated.id, updated);
+          exercises = exercises.map((e) => (e.id === updated.id ? updated : e));
+          await chooseVariant(entry, variant.id);
+          return true;
+        },
+      }],
+    });
+    setTimeout(() => input.focus(), 300);
   }
 
   // ---- Bildschirm an lassen, solange das Training offen ist ----

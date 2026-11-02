@@ -11,6 +11,10 @@ import { daysAgoLabel, todayISO } from './format.js';
 import { MUSCLE_GROUPS, groupLabel } from '../models/muscles.js';
 import { listExercises, displayName } from '../models/exercises.js';
 import { TIME_MODES, FEELINGS, ILLNESS, GROUP_TYPES, startSession, lastDoneByExercise } from '../models/sessions.js';
+import { getSettings } from '../models/settings.js';
+import { lastVariant } from '../models/sets.js';
+import { suggestionFor } from '../models/suggestions.js';
+import { variantLabel } from '../models/exercises.js';
 
 export async function openTrainingFlow({ onStarted, backfill = false }) {
   const [exercises, lastDone] = await Promise.all([listExercises(), lastDoneByExercise()]);
@@ -162,7 +166,8 @@ export async function openTrainingFlow({ onStarted, backfill = false }) {
         h('span', { class: 'plan-thumb', style: url ? `background-image: url("${url}")` : null }, url ? null : exercise.name.charAt(0).toUpperCase()),
         h('span', { class: 'plan-text' },
           h('span', { class: 'plan-name' }, exercise.name),
-          h('span', { class: 'plan-meta' }, [exercise.location, groupLabel(exercise.muscleGroup)].filter(Boolean).join(' · '))
+          h('span', { class: 'plan-meta' }, [exercise.useVariants ? null : exercise.location, groupLabel(exercise.muscleGroup)].filter(Boolean).join(' · ')),
+          h('span', { class: 'plan-reason', dataset: { reasonFor: id } })
         ),
         h('button', {
           type: 'button',
@@ -225,6 +230,34 @@ export async function openTrainingFlow({ onStarted, backfill = false }) {
         }
       });
       list.replaceChildren(...children);
+      showReasons();
+    }
+
+    // Vorschlag je Übung mit Begründung in einem Satz (Algorithmus SPEC 7); gerechnet mit der
+    // heutigen Tagesform und der Position im Plan (allein/erste vs. vorermüdet)
+    let reasonRun = 0;
+    async function showReasons() {
+      const run = ++reasonRun;
+      const settings = await getSettings();
+      const sessionLike = { id: 'planung', date: setup.date ?? todayISO(), feeling: setup.feeling, illness: setup.illness };
+      const seenGroups = new Set();
+      for (const block of blocks) {
+        for (const [position, id] of block.exerciseIds.entries()) {
+          const exercise = byId.get(id);
+          const isFirstInGroup = !seenGroups.has(exercise.muscleGroup);
+          seenGroups.add(exercise.muscleGroup);
+          const grouped = block.type !== 'single' && block.exerciseIds.length > 1;
+          const variantId = exercise.useVariants ? await lastVariant(id) : null;
+          const entry = { exerciseId: id, groupPosition: grouped ? position + 1 : 1, variantId };
+          const suggestion = await suggestionFor({ exercise, entry, session: sessionLike, settings, isFirstInGroup });
+          if (run !== reasonRun) return;
+          const el = list.querySelector(`[data-reason-for="${id}"]`);
+          if (!el) continue;
+          const variant = exercise.useVariants ? variantLabel(exercise, variantId) : '';
+          el.textContent = [variant, suggestion ? suggestion.reason : 'Noch keine Werte – erstes Mal'].filter(Boolean).join(' · ');
+          el.classList.toggle('is-uncertain', Boolean(suggestion?.uncertain));
+        }
+      }
     }
 
     // Ziehen zum Sortieren: der Block folgt dem Finger, beim Loslassen wird neu einsortiert

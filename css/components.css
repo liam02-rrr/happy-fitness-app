@@ -2353,3 +2353,141 @@ button.set-badge {
   content: '→';
   color: var(--set-drop);
 }
+
+/* Übungskarte: Menü, Vorschlag, Varianten */
+.ex-name-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.ex-name-row .ex-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.ex-menu {
+  display: grid;
+  place-items: center;
+  width: var(--tap-min);
+  height: 32px;
+  margin: -6px calc(var(--space-2) * -1) 0 0;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+}
+
+.ex-menu:active {
+  background: var(--surface-2);
+}
+
+.ex-menu svg {
+  width: 22px;
+  height: 22px;
+}
+
+.ex-suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-inner);
+  background: var(--accent-dim);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.ex-suggestion-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-soft);
+}
+
+.variant-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 var(--space-1);
+  min-width: 0;
+}
+
+.variant-picker .pills-scroll {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.variant-picker .pill,
+.pill-add {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.pill-add {
+  flex-shrink: 0;
+  border-style: dashed;
+  color: var(--accent-soft);
+}
+
+/* Satz: Letztes Mal und Ziel-RIR */
+.set-last {
+  margin-top: calc(var(--space-1) * -1);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-inner);
+  background: var(--surface);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.set-target {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--accent-dim);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-soft);
+}
+
+/* Planung: Begründung des Vorschlags */
+.plan-reason {
+  font-size: var(--text-xs);
+  color: var(--accent-soft);
+  line-height: 1.35;
+}
+
+.plan-reason:empty {
+  display: none;
+}
+
+.plan-reason.is-uncertain::after {
+  content: ' · unsicher';
+  color: var(--warning);
+}
+
+/* Editor: Varianten */
+.variant-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.variant-row .field:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.variant-step {
+  width: 84px;
+  flex-shrink: 0;
+}
+
+.variant-row .icon-btn {
+  margin-right: calc(var(--space-2) * -1);
+}

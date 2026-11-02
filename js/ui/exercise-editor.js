@@ -9,9 +9,12 @@ import { resizePhoto, photoUrl } from './photo.js';
 import { formatNumber, parseDecimal } from './format.js';
 import { MUSCLE_GROUPS, MUSCLES } from '../models/muscles.js';
 import {
-  CATEGORIES, EXERCISE_TYPES, SETUP_TIMES, DEFAULT_KG_STEPS,
-  newExercise, saveExercise, setArchived, deleteExercise, hasHistory,
+  CATEGORIES, EXERCISE_TYPES, SETUP_TIMES, DEFAULT_KG_STEPS, DEFAULT_VARIANT_NAME,
+  newExercise, saveExercise, setArchived, deleteExercise, hasHistory, listExercises, displayName, mergeIntoVariant,
 } from '../models/exercises.js';
+import { DEFAULT_SETTINGS } from '../models/settings.js';
+import { numberStepper } from './set-row.js';
+import { getAllByIndex, newId, saveInternalBackup } from '../db.js';
 
 // Standard-Richtung je Typ: Band = schwächeres Band ist schwerer, Assistenz = weniger ist schwerer
 const DEFAULT_DIRECTION = { assisted: 'down', band: 'down', level: 'up' };
@@ -162,6 +165,73 @@ export function openExerciseEditor(existing, { defaults = {}, onSaved } = {}) {
 
   const setupNotesInput = h('textarea', { class: 'field field-area', rows: 2, placeholder: 'z. B. Sitz 4, Griff weit', value: draft.setupNotes ?? '' });
 
+  // Eigene Wiederholungsbereiche (SPEC 4.1 repRanges), z. B. 15–20 für Liegestütz
+  let customRanges = Boolean(draft.repRanges);
+  const ranges = structuredClone(draft.repRanges ?? { volume: DEFAULT_SETTINGS.volumeRange, intense: DEFAULT_SETTINGS.intenseRange });
+  const rangesBox = h('div', { class: 'stack-sm' });
+  const rangeRow = (label, part, key) => h('div', { class: 'threshold-row' },
+    h('span', { class: 'threshold-label' }, label),
+    numberStepper({ value: ranges[part][key], step: 1, min: 1, max: 60, unit: 'Wdh.', label, decimals: false, onChange: (value) => { ranges[part][key] = value; } })
+  );
+  const renderRanges = () => {
+    rangesBox.replaceChildren(...(customRanges ? [
+      rangeRow('Volumensatz von', 'volume', 'min'),
+      rangeRow('Volumensatz bis', 'volume', 'max'),
+      rangeRow('Intensivsätze von', 'intense', 'min'),
+      rangeRow('Intensivsätze bis', 'intense', 'max'),
+    ] : []));
+  };
+  renderRanges();
+
+  // Varianten: z. B. verschiedene Kabeltürme; jede mit eigener Historie
+  let useVariants = Boolean(draft.useVariants);
+  const variants = structuredClone(draft.variants ?? []);
+  const variantsBox = h('div', { class: 'stack-sm' });
+  const renderVariants = () => {
+    if (!useVariants) {
+      variantsBox.replaceChildren();
+      return;
+    }
+    const kgBased = draft.type !== 'time' && !(draft.type === 'band' || draft.type === 'level' || (draft.type === 'assisted' && assistedMode === 'levels'));
+    variantsBox.replaceChildren(
+      h('p', { class: 'hint' }, `Standard: „${locationInput.value.trim() || DEFAULT_VARIANT_NAME}“ (Ort der Übung). Im Training wählst du die Variante über Pillen.`),
+      ...variants.map((variant) => h('div', { class: 'variant-row' },
+        h('input', {
+          class: 'field', type: 'text', value: variant.name, placeholder: 'Name der Variante',
+          oninput: (event) => { variant.name = event.target.value; },
+        }),
+        kgBased && h('input', {
+          class: 'field field-num variant-step', type: 'text', inputMode: 'decimal', placeholder: 'Schritt',
+          value: variant.step != null ? formatNumber(variant.step) : '',
+          'aria-label': 'Gewichtsschritt dieser Variante in kg',
+          oninput: (event) => { variant.step = parseDecimal(event.target.value) ?? undefined; },
+        }),
+        h('button', {
+          type: 'button', class: 'icon-btn', 'aria-label': 'Variante entfernen',
+          onclick: async () => {
+            const used = existing && (await getAllByIndex('entries', 'exerciseId', existing.id)).some((entry) => entry.variantId === variant.id);
+            if (used) {
+              toast('Diese Variante hat eine Historie und bleibt erhalten.', { variant: 'danger' });
+              return;
+            }
+            variants.splice(variants.indexOf(variant), 1);
+            renderVariants();
+          },
+        }, icon(icons.trash))
+      )),
+      kgBased && variants.length > 0 && h('p', { class: 'hint' }, 'Schritt leer lassen = Gewichtsschritt der Übung.'),
+      h('button', {
+        type: 'button', class: 'btn btn-ghost btn-block',
+        onclick: () => {
+          variants.push({ id: newId(), name: '' });
+          renderVariants();
+          variantsBox.querySelectorAll('.variant-row input[type="text"]:not(.variant-step)')[variants.length - 1]?.focus();
+        },
+      }, icon(icons.plus), 'Variante hinzufügen')
+    );
+  };
+  renderVariants();
+
   // Speichern mit Prüfung
   const save = async () => {
     const name = nameInput.value.trim();
@@ -190,8 +260,22 @@ export function openExerciseEditor(existing, { defaults = {}, onSaved } = {}) {
       steps = { min, max, step };
     }
 
+    if (customRanges) {
+      const broken = ['volume', 'intense'].some((part) => ranges[part].min == null || ranges[part].max == null || ranges[part].min > ranges[part].max);
+      if (broken) {
+        toast('Wiederholungsbereiche prüfen: „von“ darf nicht größer als „bis“ sein.', { variant: 'danger' });
+        return;
+      }
+    }
+    const cleanVariants = variants
+      .map((variant) => ({ ...variant, name: variant.name.trim() }))
+      .filter((variant) => variant.name);
+
     const exercise = {
       ...draft,
+      repRanges: customRanges ? ranges : undefined,
+      useVariants,
+      variants: cleanVariants,
       name,
       location: locationInput.value.trim(),
       photo: photoChanged ? photo : draft.photo,
@@ -219,6 +303,12 @@ export function openExerciseEditor(existing, { defaults = {}, onSaved } = {}) {
       },
     }, icon(icons.archive), existing.archived ? 'Wiederherstellen' : 'Archivieren'));
 
+    manageBox.append(h('button', {
+      type: 'button',
+      class: 'btn btn-secondary btn-block',
+      onclick: () => openMergePicker(),
+    }, icon(icons.link), 'Als Variante zu anderer Übung'));
+
     hasHistory(existing.id).then((history) => {
       if (history) {
         manageBox.append(h('p', { class: 'hint' }, 'Diese Übung hat eine Historie. Sie kann archiviert, aber nicht gelöscht werden.'));
@@ -236,6 +326,37 @@ export function openExerciseEditor(existing, { defaults = {}, onSaved } = {}) {
           onSaved?.();
         },
       }, icon(icons.trash), 'Löschen'));
+    });
+  }
+
+  // Diese Übung (mit ihrer Historie) als Variante an eine andere Übung hängen
+  async function openMergePicker() {
+    const candidates = (await listExercises())
+      .filter((exercise) => exercise.id !== existing.id && exercise.type === existing.type && !exercise.archived)
+      .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    const listEl = h('div', { class: 'add-list' }, candidates.length
+      ? candidates.map((target) => h('button', {
+        type: 'button', class: 'add-row',
+        onclick: async () => {
+          const ok = await confirmSheet({
+            title: 'Als Variante zusammenführen?',
+            text: `„${displayName(existing)}“ wird eine Variante von „${target.name}“. Die ganze Historie wandert mit, „${existing.name}“ verschwindet aus der Übungsliste.`,
+            confirmLabel: 'Zusammenführen',
+            variant: 'primary',
+          });
+          if (!ok) return;
+          await saveInternalBackup('Vor Zusammenführen von Übungen');
+          await mergeIntoVariant(existing, target);
+          toast(`Jetzt Variante von ${target.name}`, { variant: 'success' });
+          closePicker();
+          close();
+          onSaved?.();
+        },
+      }, h('span', { class: 'list-label' }, displayName(target)), h('span', { class: 'meta' }, 'wählen ›')))
+      : [h('p', { class: 'hint' }, 'Keine andere Übung desselben Typs vorhanden.')]);
+    const closePicker = openView({
+      title: 'Variante von …',
+      content: h('div', { class: 'form' }, h('p', { class: 'hint' }, `Wähle die Übung, zu der „${existing.name}“ als Variante gehören soll.`), listEl),
     });
   }
 
@@ -267,6 +388,14 @@ export function openExerciseEditor(existing, { defaults = {}, onSaved } = {}) {
       segmented(SETUP_TIMES, draft.setupTime, (value) => { draft.setupTime = value; }),
       field('Einstellungen am Gerät', setupNotesInput),
       toggleRow('Rücken-Plus', draft.backPlus, (value) => { draft.backPlus = value; }, 'Als Zusatzübung für den Rücken vorschlagen')
+    ),
+    formSection('Varianten',
+      toggleRow('Variante im Training wählen', useVariants, (value) => { useVariants = value; renderVariants(); }, 'Für verschiedene Geräte oder Griffe, ohne die Übungsliste zu füllen'),
+      variantsBox
+    ),
+    formSection('Wiederholungen',
+      toggleRow('Eigene Wiederholungsbereiche', customRanges, (value) => { customRanges = value; renderRanges(); }, `Statt Standard ${DEFAULT_SETTINGS.volumeRange.min}–${DEFAULT_SETTINGS.volumeRange.max} / ${DEFAULT_SETTINGS.intenseRange.min}–${DEFAULT_SETTINGS.intenseRange.max}, z. B. für Liegestütz`),
+      rangesBox
     ),
     !isNew && formSection('Verwalten', manageBox)
   );
