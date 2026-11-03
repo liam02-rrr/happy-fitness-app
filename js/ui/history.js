@@ -11,7 +11,7 @@ import { openTrainingFlow } from './training-flow.js';
 import { openActiveTraining } from './active-training.js';
 import { setSummary, typeBadge } from './set-row.js';
 import { groupLabel } from '../models/muscles.js';
-import { listExercises, variantLabel } from '../models/exercises.js';
+import { listExercises, variantLabel, withVariant } from '../models/exercises.js';
 import { listSessions, getEntries, deleteSession, FEELINGS, ILLNESS, TIME_MODES } from '../models/sessions.js';
 import { getSets, dropDepth } from '../models/sets.js';
 import { getAll } from '../db.js';
@@ -124,9 +124,10 @@ export function renderHistory(section) {
     };
 
     const exerciseBlock = (entry) => {
-      const exercise = exerciseById.get(entry.exerciseId) ?? { name: 'Gelöschte Übung', type: 'weight' };
+      const base = exerciseById.get(entry.exerciseId);
+      const exercise = base ? withVariant(base, entry.variantId ?? null) : { name: 'Gelöschte Übung', type: 'weight' };
       return h('div', { class: 'detail-exercise' },
-        h('p', { class: 'ex-name' }, exercise.name, variantLabel(exercise, entry.variantId) && h('span', { class: 'ex-meta' }, ` · ${variantLabel(exercise, entry.variantId)}`)),
+        h('p', { class: 'ex-name' }, exercise.name, base && variantLabel(base, entry.variantId) && h('span', { class: 'ex-meta' }, ` · ${variantLabel(base, entry.variantId)}`)),
         setLines(entry, exercise),
         entry.note && h('p', { class: 'ex-last-note' }, entry.note)
       );

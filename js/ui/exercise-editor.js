@@ -2,7 +2,7 @@
 import { h, icon } from './dom.js';
 import { icons } from './icons.js';
 import { openView } from './view.js';
-import { confirmSheet } from './sheet.js';
+import { openSheet, confirmSheet } from './sheet.js';
 import { toast } from './toast.js';
 import { segmented, pills, toggleRow, ratingDots, field, formSection } from './controls.js';
 import { resizePhoto, photoUrl } from './photo.js';
@@ -192,34 +192,31 @@ export function openExerciseEditor(existing, { defaults = {}, onSaved } = {}) {
       variantsBox.replaceChildren();
       return;
     }
-    const kgBased = draft.type !== 'time' && !(draft.type === 'band' || draft.type === 'level' || (draft.type === 'assisted' && assistedMode === 'levels'));
     variantsBox.replaceChildren(
       h('p', { class: 'hint' }, `Standard: „${locationInput.value.trim() || DEFAULT_VARIANT_NAME}“ (Ort der Übung). Im Training wählst du die Variante über Pillen.`),
-      ...variants.map((variant) => h('div', { class: 'variant-row' },
-        h('input', {
-          class: 'field', type: 'text', value: variant.name, placeholder: 'Name der Variante',
-          oninput: (event) => { variant.name = event.target.value; },
-        }),
-        kgBased && h('input', {
-          class: 'field field-num variant-step', type: 'text', inputMode: 'decimal', placeholder: 'Schritt',
-          value: variant.step != null ? formatNumber(variant.step) : '',
-          'aria-label': 'Gewichtsschritt dieser Variante in kg',
-          oninput: (event) => { variant.step = parseDecimal(event.target.value) ?? undefined; },
-        }),
-        h('button', {
-          type: 'button', class: 'icon-btn', 'aria-label': 'Variante entfernen',
-          onclick: async () => {
-            const used = existing && (await getAllByIndex('entries', 'exerciseId', existing.id)).some((entry) => entry.variantId === variant.id);
-            if (used) {
-              toast('Diese Variante hat eine Historie und bleibt erhalten.', { variant: 'danger' });
-              return;
-            }
-            variants.splice(variants.indexOf(variant), 1);
-            renderVariants();
-          },
-        }, icon(icons.trash))
+      ...variants.map((variant) => h('div', { class: 'variant-item' },
+        h('div', { class: 'variant-row' },
+          h('input', {
+            class: 'field', type: 'text', value: variant.name, placeholder: 'Name der Variante',
+            oninput: (event) => { variant.name = event.target.value; },
+          }),
+          h('button', {
+            type: 'button', class: 'icon-btn', 'aria-label': 'Variante entfernen',
+            onclick: async () => {
+              const used = existing && (await getAllByIndex('entries', 'exerciseId', existing.id)).some((entry) => entry.variantId === variant.id);
+              if (used) {
+                toast('Diese Variante hat eine Historie und bleibt erhalten.', { variant: 'danger' });
+                return;
+              }
+              variants.splice(variants.indexOf(variant), 1);
+              renderVariants();
+            },
+          }, icon(icons.trash))
+        ),
+        h('button', { type: 'button', class: 'variant-recording', onclick: () => editVariantRecording(variant) },
+          h('span', {}, recordingSummary(variant)),
+          h('span', { class: 'variant-recording-action' }, 'Erfassung ›'))
       )),
-      kgBased && variants.length > 0 && h('p', { class: 'hint' }, 'Schritt leer lassen = Gewichtsschritt der Übung.'),
       h('button', {
         type: 'button', class: 'btn btn-ghost btn-block',
         onclick: () => {
@@ -231,6 +228,106 @@ export function openExerciseEditor(existing, { defaults = {}, onSaved } = {}) {
     );
   };
   renderVariants();
+
+  // Kurzbeschreibung der Erfassung einer Variante, z. B. „Assistiert · Stufen 1–12“
+  function recordingSummary(variant) {
+    if (!variant.type) return variant.step ? `Wie Übung, Schritt ${formatNumber(variant.step)} kg` : 'Erfassung wie Übung';
+    const typeLabel = EXERCISE_TYPES.find((t) => t.id === variant.type)?.label ?? variant.type;
+    const steps = variant.steps;
+    if (!steps) return typeLabel;
+    if (Array.isArray(steps.levels)) {
+      return steps.levels.length ? `${typeLabel} · Stufen ${steps.levels[0]}–${steps.levels.at(-1)}` : `${typeLabel} · Stufen fehlen`;
+    }
+    return `${typeLabel} · ${formatNumber(steps.min)}–${formatNumber(steps.max)} kg, Schritt ${formatNumber(steps.step)}`;
+  }
+
+  // Eigene Erfassung (Typ und Stufen) nur für diese Variante
+  function editVariantRecording(variant) {
+    const state = {
+      type: variant.type ?? draft.type,
+      mode: Array.isArray((variant.type ? variant.steps : draft.steps)?.levels) ? 'levels' : 'kg',
+      kg: { ...(DEFAULT_KG_STEPS[variant.type ?? draft.type] ?? DEFAULT_KG_STEPS.weight), ...((variant.type ? variant.steps : draft.steps)?.step != null ? (variant.type ? variant.steps : draft.steps) : {}) },
+      levelText: ((variant.type ? variant.steps : draft.steps)?.levels ?? []).join(', '),
+      direction: (variant.type ? variant.steps : draft.steps)?.harderDirection ?? DEFAULT_DIRECTION[variant.type ?? draft.type] ?? 'up',
+    };
+    const fields = h('div', { class: 'stack-sm' });
+    const levelMode = () => state.type === 'band' || state.type === 'level' || (state.type === 'assisted' && state.mode === 'levels');
+    const renderFields = () => {
+      const parts = [];
+      if (state.type === 'assisted') {
+        parts.push(segmented([{ id: 'kg', label: 'In kg' }, { id: 'levels', label: 'In Stufen' }], state.mode, (mode) => { state.mode = mode; renderFields(); }));
+      }
+      if (state.type === 'time') {
+        parts.push(h('p', { class: 'hint' }, 'Erfasst werden Sekunden.'));
+      } else if (levelMode()) {
+        parts.push(
+          field(state.type === 'band' ? 'Bänder' : 'Stufen', h('input', {
+            class: 'field', type: 'text', value: state.levelText, placeholder: 'z. B. 1-12',
+            oninput: (event) => { state.levelText = event.target.value; },
+          })),
+          field('Schwerer ist', segmented([{ id: 'up', label: 'Höhere Stufe' }, { id: 'down', label: 'Niedrigere Stufe' }], state.direction, (value) => { state.direction = value; }))
+        );
+      } else {
+        const kgInput = (key) => h('input', {
+          class: 'field field-num num', type: 'text', inputMode: 'decimal', value: formatNumber(state.kg[key]),
+          oninput: (event) => { state.kg[key] = parseDecimal(event.target.value); },
+        });
+        parts.push(h('div', { class: 'triple' }, field('Von', kgInput('min')), field('Bis', kgInput('max')), field('Schritt', kgInput('step'))));
+      }
+      fields.replaceChildren(...parts);
+    };
+    renderFields();
+
+    openSheet({
+      title: `Erfassung: ${variant.name || 'Variante'}`,
+      text: 'Gilt nur für diese Variante, z. B. Klimmzugmaschine einmal in Stufen, einmal in kg.',
+      content: h('div', { class: 'stack-sm' },
+        pills(EXERCISE_TYPES, state.type, (type) => {
+          state.type = type;
+          if (DEFAULT_DIRECTION[type]) state.direction = DEFAULT_DIRECTION[type];
+          renderFields();
+        }),
+        fields
+      ),
+      actions: [
+        {
+          label: 'Übernehmen',
+          variant: 'primary',
+          onClick: () => {
+            let steps = null;
+            if (levelMode()) {
+              const levels = parseLevels(state.levelText);
+              if (levels.length < 2) {
+                toast('Bitte mindestens zwei Stufen eingeben.', { variant: 'danger' });
+                return false;
+              }
+              steps = { levels, harderDirection: state.direction };
+            } else if (state.type !== 'time') {
+              const { min, max, step } = state.kg;
+              if ([min, max, step].some((value) => value == null) || max <= min || step <= 0) {
+                toast('Bitte Gewichtsstufen prüfen: Von < Bis, Schritt > 0.', { variant: 'danger' });
+                return false;
+              }
+              steps = { min, max, step };
+            }
+            Object.assign(variant, { type: state.type, steps });
+            delete variant.step;
+            renderVariants();
+            return true;
+          },
+        },
+        {
+          label: 'Wie Übung',
+          onClick: () => {
+            delete variant.type;
+            delete variant.steps;
+            delete variant.step;
+            renderVariants();
+          },
+        },
+      ],
+    });
+  }
 
   // Speichern mit Prüfung
   const save = async () => {
@@ -332,7 +429,7 @@ export function openExerciseEditor(existing, { defaults = {}, onSaved } = {}) {
   // Diese Übung (mit ihrer Historie) als Variante an eine andere Übung hängen
   async function openMergePicker() {
     const candidates = (await listExercises())
-      .filter((exercise) => exercise.id !== existing.id && exercise.type === existing.type && !exercise.archived)
+      .filter((exercise) => exercise.id !== existing.id && !exercise.archived)
       .sort((a, b) => a.name.localeCompare(b.name, 'de'));
     const listEl = h('div', { class: 'add-list' }, candidates.length
       ? candidates.map((target) => h('button', {
@@ -340,7 +437,7 @@ export function openExerciseEditor(existing, { defaults = {}, onSaved } = {}) {
         onclick: async () => {
           const ok = await confirmSheet({
             title: 'Als Variante zusammenführen?',
-            text: `„${displayName(existing)}“ wird eine Variante von „${target.name}“. Die ganze Historie wandert mit, „${existing.name}“ verschwindet aus der Übungsliste.`,
+            text: `„${displayName(existing)}“ wird eine Variante von „${target.name}“. Die ganze Historie wandert mit, ${existing.type !== target.type || Array.isArray(existing.steps?.levels) !== Array.isArray(target.steps?.levels) ? 'die Variante behält ihren Typ und ihre Stufen, ' : ''}„${existing.name}“ verschwindet aus der Übungsliste.`,
             confirmLabel: 'Zusammenführen',
             variant: 'primary',
           });
@@ -353,7 +450,7 @@ export function openExerciseEditor(existing, { defaults = {}, onSaved } = {}) {
           onSaved?.();
         },
       }, h('span', { class: 'list-label' }, displayName(target)), h('span', { class: 'meta' }, 'wählen ›')))
-      : [h('p', { class: 'hint' }, 'Keine andere Übung desselben Typs vorhanden.')]);
+      : [h('p', { class: 'hint' }, 'Keine andere Übung vorhanden.')]);
     const closePicker = openView({
       title: 'Variante von …',
       content: h('div', { class: 'form' }, h('p', { class: 'hint' }, `Wähle die Übung, zu der „${existing.name}“ als Variante gehören soll.`), listEl),
