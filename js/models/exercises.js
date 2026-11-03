@@ -101,16 +101,23 @@ export function variantLabel(exercise, variantId) {
   return variantsOf(exercise).find((variant) => variant.id === (variantId ?? null))?.name ?? '';
 }
 
-// Übung mit den Werten der gewählten Variante (eigene Gewichtsschritte, Ort)
+// Übung mit den Werten der gewählten Variante. Eine Variante kann eine eigene Erfassung haben
+// (Typ und Stufen, z. B. Klimmzugmaschine einmal in kg, einmal in Stufen) oder nur einen eigenen Schritt.
 export function withVariant(exercise, variantId) {
   const variant = (exercise.variants ?? []).find((v) => v.id === variantId);
   if (!variant) return exercise;
+  if (variant.type) {
+    return { ...exercise, location: variant.name, type: variant.type, steps: variant.steps ?? null };
+  }
   return {
     ...exercise,
     location: variant.name,
     steps: variant.step && exercise.steps?.step != null ? { ...exercise.steps, step: variant.step } : exercise.steps,
   };
 }
+
+// Erfassung (Typ und Stufen) zweier Übungen gleich?
+const sameRecording = (a, b) => a.type === b.type && Array.isArray(a.steps?.levels) === Array.isArray(b.steps?.levels);
 
 // Anzeige mit Variante: „Cable Crunch · Life Fitness“
 export function displayNameWithVariant(exercise, variantId) {
@@ -130,14 +137,20 @@ export async function mergeIntoVariant(source, target) {
   const variants = [...(target.variants ?? [])];
   const mapping = new Map();
 
-  const add = (name, step) => {
+  // Jede neue Variante behält die Erfassung, mit der ihre Historie aufgezeichnet wurde
+  const add = (name, recorded) => {
     const variant = { id: newId(), name: name || source.name };
-    if (step != null && step !== target.steps?.step) variant.step = step;
+    if (!sameRecording(recorded, target)) {
+      variant.type = recorded.type;
+      variant.steps = recorded.steps ?? null;
+    } else if (recorded.steps?.step != null && recorded.steps.step !== target.steps?.step) {
+      variant.step = recorded.steps.step;
+    }
     variants.push(variant);
     return variant.id;
   };
-  mapping.set(null, add(source.location || source.name, source.steps?.step));
-  for (const variant of source.variants ?? []) mapping.set(variant.id, add(variant.name, variant.step ?? source.steps?.step));
+  mapping.set(null, add(source.location || source.name, source));
+  for (const variant of source.variants ?? []) mapping.set(variant.id, add(variant.name, withVariant(source, variant.id)));
 
   const entries = await getAllByIndex('entries', 'exerciseId', source.id);
   for (const entry of entries) {

@@ -20,7 +20,7 @@ export function suggestionKey({ settings, exercise, entry, session, isFirstInGro
     thresholds: THRESHOLD_KEYS.map((key) => readSetting(settings, key)),
     steps: withVariant(exercise, entry.variantId ?? null).steps,
     repRanges: exercise.repRanges ?? null,
-    type: exercise.type,
+    type: withVariant(exercise, entry.variantId ?? null).type,
     variant: entry.variantId ?? null,
     groupPosition: entry.groupPosition ?? 1,
     feeling: session.feeling,
